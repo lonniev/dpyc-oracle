@@ -1,0 +1,5 @@
+name: dpyc-oracle
+install: pip install -e .
+command: python -m dpyc_oracle.server
+runtime:
+  python: "3.12"
