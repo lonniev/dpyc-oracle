@@ -16,7 +16,9 @@ DPYC ("Don't Pester Your Customer") is a philosophy and protocol for API \
 monetization via Bitcoin Lightning micropayments. Users pre-fund a satoshi \
 balance and consume API calls without KYC, stablecoins, or mid-session \
 payment popups. Identity is a Nostr keypair (npub), not an email or \
-username.
+username. Tollbooth monetizes complete business information at the MCP tool \
+layer — not raw REST data fragments — using pre-funded Lightning balances \
+that eliminate per-request payment ceremonies.
 
 The Honor Chain is a voluntary community of Operators and Authorities who \
 agree to transparent, auditable economic rules. Operators run MCP services \
