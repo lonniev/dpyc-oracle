@@ -194,6 +194,30 @@ async def who_is_first_curator() -> dict | str:
     return curator
 
 
+@mcp.tool()
+async def network_versions() -> dict:
+    """Get current recommended versions of all Tollbooth components.
+
+    Returns component versions, minimum compatibility, active protocols,
+    and a short advisory summary. Data is fetched live from
+    network-status.json in the dpyc-community repo.
+    """
+    _, registry = _ensure_initialized()
+    return await registry.get_network_status()
+
+
+@mcp.tool()
+async def network_advisory() -> str:
+    """Get current network deployment advisory.
+
+    Returns human-readable guidance on what changed recently, urgent
+    upgrades, and actions operators should take. Fetched live from
+    ADVISORY.md in the dpyc-community repo.
+    """
+    _, registry = _ensure_initialized()
+    return await registry.get_text("ADVISORY.md")
+
+
 # --- Stubbed future tools ---
 
 
