@@ -78,6 +78,9 @@ class CommunityRegistry:
                 return member
         return None
 
+    async def get_network_status(self) -> dict[str, Any]:
+        return await self._fetch_json("network-status.json")
+
     async def get_first_curator(self) -> dict[str, Any] | None:
         members = await self.get_members()
         for member in members:

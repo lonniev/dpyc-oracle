@@ -37,6 +37,17 @@ def _reset_server_state():
     server_module._registry = None
 
 
+SAMPLE_NETWORK_STATUS = {
+    "components": {
+        "tollbooth-dpyc": {"current": "0.1.11", "minimum": "0.1.7"},
+        "tollbooth-authority": {"current": "0.1.1", "minimum": "0.1.0"},
+    },
+    "protocols": ["dpyp-01-base-certificate"],
+    "last_updated": "2026-02-21",
+    "advisory": "Test advisory summary.",
+}
+
+
 def _make_registry_mock():
     """Create a mock CommunityRegistry with standard responses."""
     mock = AsyncMock(spec=CommunityRegistry)
@@ -46,6 +57,7 @@ def _make_registry_mock():
     )
     mock.get_text = AsyncMock(side_effect=_get_text_side_effect)
     mock.get_members = AsyncMock(return_value=SAMPLE_MEMBERS["members"])
+    mock.get_network_status = AsyncMock(return_value=SAMPLE_NETWORK_STATUS)
     return mock
 
 
@@ -61,6 +73,8 @@ async def _get_text_side_effect(path: str):
         return "# DPYC Community\n\nWelcome."
     if path == "GOVERNANCE.md":
         return "# Governance\n\nRules here."
+    if path == "ADVISORY.md":
+        return "# DPYC Network Advisory\n\nRedeploy for npub enforcement."
     return ""
 
 
@@ -123,6 +137,26 @@ async def test_about(mock_registry):
     assert "# About the DPYC Honor Chain" in result
     assert "# Governance" in result
     assert "DPYC Community" in result
+
+
+@pytest.mark.asyncio
+async def test_network_versions(mock_registry):
+    result = await server_module.network_versions()
+    assert isinstance(result, dict)
+    assert "components" in result
+    assert "tollbooth-dpyc" in result["components"]
+    assert result["components"]["tollbooth-dpyc"]["current"] == "0.1.11"
+    assert "protocols" in result
+    assert "dpyp-01-base-certificate" in result["protocols"]
+    assert result["last_updated"] == "2026-02-21"
+
+
+@pytest.mark.asyncio
+async def test_network_advisory(mock_registry):
+    result = await server_module.network_advisory()
+    assert isinstance(result, str)
+    assert "# DPYC Network Advisory" in result
+    assert "npub enforcement" in result
 
 
 @pytest.mark.asyncio

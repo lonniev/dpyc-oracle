@@ -104,6 +104,28 @@ async def test_get_text_returns_markdown(registry):
     assert "# Governance" in text
 
 
+SAMPLE_NETWORK_STATUS = {
+    "components": {
+        "tollbooth-dpyc": {"current": "0.1.11", "minimum": "0.1.7"},
+    },
+    "protocols": ["dpyp-01-base-certificate"],
+    "last_updated": "2026-02-21",
+}
+
+
+@pytest.mark.asyncio
+async def test_get_network_status(registry):
+    with patch.object(
+        registry._client,
+        "get",
+        return_value=_mock_response(json_data=SAMPLE_NETWORK_STATUS),
+    ):
+        status = await registry.get_network_status()
+    assert "components" in status
+    assert status["components"]["tollbooth-dpyc"]["current"] == "0.1.11"
+    assert "dpyp-01-base-certificate" in status["protocols"]
+
+
 @pytest.mark.asyncio
 async def test_cache_hit_within_ttl(registry):
     mock_get = AsyncMock(return_value=_mock_response(json_data=SAMPLE_MEMBERS))
