@@ -166,6 +166,17 @@ async def test_network_advisory(mock_registry):
 
 
 @pytest.mark.asyncio
+async def test_service_status():
+    result = await server_module.service_status()
+    assert result["service"] == "dpyc-oracle"
+    versions = result["versions"]
+    assert "dpyc_oracle" in versions
+    assert "python" in versions
+    assert "fastmcp" in versions
+    assert "nostr_sdk" in versions
+
+
+@pytest.mark.asyncio
 async def test_stub_renounce_membership():
     with pytest.raises(NotImplementedError, match="renounce_membership"):
         await server_module.renounce_membership(ALICE_NPUB)
