@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "dpyc-oracle"
-version = "0.1.0"
+version = "0.1.1"
 description = "DPYC Honor Chain community concierge — free MCP service for membership, governance, and onboarding"
 readme = "README.md"
 license = "Apache-2.0"
