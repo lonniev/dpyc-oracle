@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import base64
+import importlib.metadata
 import json
 import logging
+import platform
 import secrets
 import time
 import uuid
@@ -12,6 +14,7 @@ import httpx
 from fastmcp import FastMCP
 from nostr_sdk import Event, PublicKey
 
+from dpyc_oracle import __version__
 from dpyc_oracle.config import OracleSettings
 from dpyc_oracle.registry import CommunityRegistry
 
@@ -315,6 +318,29 @@ async def network_advisory() -> str:
     """
     _, registry = _ensure_initialized()
     return await registry.get_text("ADVISORY.md")
+
+
+@mcp.tool()
+async def service_status() -> dict:
+    """Diagnostic: report this service's software versions and runtime info.
+
+    Free, unauthenticated. Use to verify deployment versions across the
+    DPYC ecosystem.
+    """
+    versions: dict[str, str] = {
+        "dpyc_oracle": __version__,
+        "python": platform.python_version(),
+    }
+    for pkg in ("fastmcp", "httpx", "nostr-sdk"):
+        try:
+            versions[pkg.replace("-", "_")] = importlib.metadata.version(pkg)
+        except importlib.metadata.PackageNotFoundError:
+            versions[pkg.replace("-", "_")] = "unknown"
+
+    return {
+        "service": "dpyc-oracle",
+        "versions": versions,
+    }
 
 
 # --- Citizenship onboarding tools ---
