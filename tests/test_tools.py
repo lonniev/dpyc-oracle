@@ -340,28 +340,28 @@ async def test_confirm_citizenship_full_success(mock_registry):
     nonce = req["nonce"]
     event = EventBuilder.text_note(f"DPYC-CITIZENSHIP:{nonce}").sign_with_keys(keys)
 
-    # Mock _create_membership_pr since we don't have a real GitHub token
+    # Mock _commit_membership since we don't have a real GitHub token
     with patch.object(
         server_module,
-        "_create_membership_pr",
+        "_commit_membership",
         new_callable=AsyncMock,
-        return_value="https://github.com/lonniev/dpyc-community/pull/99",
-    ) as mock_pr:
+        return_value="https://github.com/lonniev/dpyc-community/blob/main/members.json",
+    ) as mock_commit:
         result = await server_module.confirm_citizenship(
             npub, req["challenge_id"], event.as_json()
         )
 
     assert result["success"] is True
     assert result["status"] == "admitted"
-    assert "pull/99" in result["pr_url"]
+    assert "members.json" in result["commit_url"]
     assert "Welcome" in result["message"]
 
     # Challenge should be consumed
     assert req["challenge_id"] not in server_module._challenges
 
-    # PR helper was called with correct args
-    mock_pr.assert_called_once()
-    call_args = mock_pr.call_args
+    # Commit helper was called with correct args
+    mock_commit.assert_called_once()
+    call_args = mock_commit.call_args
     assert call_args[0][2] == npub  # npub arg
     assert call_args[0][3] == "New Citizen"  # display_name arg
 
@@ -379,7 +379,7 @@ async def test_confirm_citizenship_pr_failure_returns_error(mock_registry):
 
     with patch.object(
         server_module,
-        "_create_membership_pr",
+        "_commit_membership",
         new_callable=AsyncMock,
         side_effect=RuntimeError("GitHub token not configured"),
     ):
@@ -388,4 +388,4 @@ async def test_confirm_citizenship_pr_failure_returns_error(mock_registry):
         )
 
     assert result["success"] is False
-    assert "PR creation failed" in result["error"]
+    assert "membership commit failed" in result["error"]

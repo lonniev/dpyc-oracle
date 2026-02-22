@@ -86,21 +86,22 @@ def _validate_npub(npub: str) -> PublicKey:
     return PublicKey.parse(npub)
 
 
-async def _create_membership_pr(
+async def _commit_membership(
     settings: OracleSettings,
     registry: CommunityRegistry,
     npub: str,
     display_name: str,
 ) -> str:
-    """Create a GitHub PR adding a new citizen to members.json.
+    """Commit a new citizen directly to main in members.json.
 
-    Returns the PR URL.
+    The Schnorr signature verification is the trust check — no human
+    review needed. Returns the commit URL.
     """
     token = settings.github_token
     if not token:
         raise RuntimeError(
             "GitHub token not configured. Set GITHUB_TOKEN env var on "
-            "FastMCP Cloud to enable automated PR creation."
+            "FastMCP Cloud to enable automated membership commits."
         )
 
     repo = settings.dpyc_community_repo
@@ -115,21 +116,7 @@ async def _create_membership_pr(
     upstream_npub = curator["npub"] if curator else None
 
     async with httpx.AsyncClient(headers=headers, timeout=30.0) as client:
-        # 1. Get main branch SHA
-        resp = await client.get(f"{api}/git/ref/heads/main")
-        resp.raise_for_status()
-        main_sha = resp.json()["object"]["sha"]
-
-        # 2. Create branch
-        npub_short = npub[:16]
-        branch_name = f"citizenship/{npub_short}"
-        resp = await client.post(
-            f"{api}/git/refs",
-            json={"ref": f"refs/heads/{branch_name}", "sha": main_sha},
-        )
-        resp.raise_for_status()
-
-        # 3. Get current members.json
+        # 1. Get current members.json from main
         resp = await client.get(f"{api}/contents/members.json?ref=main")
         resp.raise_for_status()
         file_data = resp.json()
@@ -137,8 +124,9 @@ async def _create_membership_pr(
         content_b64 = file_data["content"]
         members_json = json.loads(base64.b64decode(content_b64))
 
-        # 4. Add new citizen
+        # 2. Add new citizen
         today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        npub_short = npub[:16]
         new_member = {
             "npub": npub,
             "role": "citizen",
@@ -147,45 +135,23 @@ async def _create_membership_pr(
             "display_name": display_name,
             "services": [],
             "upstream_authority_npub": upstream_npub,
-            "notes": "Admitted via Nostr signature-based onboarding",
+            "notes": "Admitted via Nostr signature-based citizenship onboarding",
         }
         members_json["members"].append(new_member)
         updated_content = json.dumps(members_json, indent=2) + "\n"
         updated_b64 = base64.b64encode(updated_content.encode()).decode()
 
-        # 5. Commit to branch
+        # 3. Commit directly to main
         resp = await client.put(
             f"{api}/contents/members.json",
             json={
                 "message": f"[Citizenship] Add {display_name} ({npub_short})",
                 "content": updated_b64,
                 "sha": file_sha,
-                "branch": branch_name,
             },
         )
         resp.raise_for_status()
-
-        # 6. Create PR
-        resp = await client.post(
-            f"{api}/pulls",
-            json={
-                "title": f"[Citizenship] Add {display_name} ({npub_short})",
-                "body": (
-                    f"## New Citizen Application\n\n"
-                    f"- **npub:** `{npub}`\n"
-                    f"- **Display name:** {display_name}\n"
-                    f"- **Verified via:** Nostr Schnorr signature (challenge-sign-verify)\n"
-                    f"- **Date:** {today}\n\n"
-                    f"This PR was automatically created by the DPYC Oracle after "
-                    f"the applicant proved ownership of their npub via a signed "
-                    f"Nostr event."
-                ),
-                "head": branch_name,
-                "base": "main",
-            },
-        )
-        resp.raise_for_status()
-        return resp.json()["html_url"]
+        return resp.json()["content"]["html_url"]
 
 
 mcp = FastMCP("dpyc-oracle", instructions=INSTRUCTIONS)
@@ -438,8 +404,8 @@ async def confirm_citizenship(
     4. The event content contains the issued nonce
     5. The npub is not already registered
 
-    On success, opens a PR against dpyc-community/members.json to register
-    the new Citizen.
+    On success, commits directly to dpyc-community/members.json to register
+    the new Citizen immediately.
     """
     _prune_expired_challenges()
 
@@ -508,16 +474,16 @@ async def confirm_citizenship(
             "error": "This npub was registered while your challenge was pending.",
         }
 
-    # 6. Create PR
+    # 6. Commit membership directly to main
     try:
-        pr_url = await _create_membership_pr(
+        commit_url = await _commit_membership(
             settings, registry, npub, challenge["display_name"],
         )
     except Exception as exc:
-        logger.error("Failed to create membership PR: %s", exc)
+        logger.error("Failed to commit membership: %s", exc)
         return {
             "success": False,
-            "error": f"Signature verified but PR creation failed: {exc}",
+            "error": f"Signature verified but membership commit failed: {exc}",
         }
 
     # 7. Clean up challenge
@@ -526,11 +492,10 @@ async def confirm_citizenship(
     return {
         "success": True,
         "status": "admitted",
-        "pr_url": pr_url,
+        "commit_url": commit_url,
         "message": (
             f"Welcome to the DPYC Honor Chain, {challenge['display_name']}! "
-            f"Your citizenship PR has been opened. Once merged by an Authority, "
-            f"you will be a registered Citizen."
+            f"Your membership has been registered. You are now a Citizen."
         ),
     }
 
