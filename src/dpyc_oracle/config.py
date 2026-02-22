@@ -8,3 +8,5 @@ class OracleSettings(BaseSettings):
         "https://raw.githubusercontent.com/lonniev/dpyc-community/main"
     )
     cache_ttl_seconds: int = 300
+    github_token: str | None = None
+    dpyc_community_repo: str = "lonniev/dpyc-community"

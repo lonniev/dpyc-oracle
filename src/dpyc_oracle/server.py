@@ -1,8 +1,16 @@
 from __future__ import annotations
 
+import base64
+import json
 import logging
+import secrets
+import time
+import uuid
+from datetime import datetime, timezone
 
+import httpx
 from fastmcp import FastMCP
+from nostr_sdk import Event, PublicKey
 
 from dpyc_oracle.config import OracleSettings
 from dpyc_oracle.registry import CommunityRegistry
@@ -53,6 +61,131 @@ def _ensure_initialized() -> tuple[OracleSettings, CommunityRegistry]:
             cache_ttl_seconds=_settings.cache_ttl_seconds,
         )
     return _settings, _registry
+
+
+# -- Citizenship challenge store (ephemeral, in-memory) ----------------------
+
+_CHALLENGE_TTL_SECONDS = 600  # 10 minutes
+_CHALLENGE_PREFIX = "DPYC-CITIZENSHIP:"
+
+_challenges: dict[str, dict] = {}
+
+
+def _prune_expired_challenges() -> None:
+    """Remove expired challenges."""
+    now = time.time()
+    expired = [k for k, v in _challenges.items() if now > v["expires_at"]]
+    for k in expired:
+        del _challenges[k]
+
+
+def _validate_npub(npub: str) -> PublicKey:
+    """Parse and validate an npub string. Raises ValueError on failure."""
+    if not npub.startswith("npub1"):
+        raise ValueError(f"Invalid npub format — must start with 'npub1': {npub}")
+    return PublicKey.parse(npub)
+
+
+async def _create_membership_pr(
+    settings: OracleSettings,
+    registry: CommunityRegistry,
+    npub: str,
+    display_name: str,
+) -> str:
+    """Create a GitHub PR adding a new citizen to members.json.
+
+    Returns the PR URL.
+    """
+    token = settings.github_token
+    if not token:
+        raise RuntimeError(
+            "GitHub token not configured. Set GITHUB_TOKEN env var on "
+            "FastMCP Cloud to enable automated PR creation."
+        )
+
+    repo = settings.dpyc_community_repo
+    api = f"https://api.github.com/repos/{repo}"
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Accept": "application/vnd.github+json",
+    }
+
+    # Fetch the Prime Authority npub for upstream_authority_npub
+    curator = await registry.get_first_curator()
+    upstream_npub = curator["npub"] if curator else None
+
+    async with httpx.AsyncClient(headers=headers, timeout=30.0) as client:
+        # 1. Get main branch SHA
+        resp = await client.get(f"{api}/git/ref/heads/main")
+        resp.raise_for_status()
+        main_sha = resp.json()["object"]["sha"]
+
+        # 2. Create branch
+        npub_short = npub[:16]
+        branch_name = f"citizenship/{npub_short}"
+        resp = await client.post(
+            f"{api}/git/refs",
+            json={"ref": f"refs/heads/{branch_name}", "sha": main_sha},
+        )
+        resp.raise_for_status()
+
+        # 3. Get current members.json
+        resp = await client.get(f"{api}/contents/members.json?ref=main")
+        resp.raise_for_status()
+        file_data = resp.json()
+        file_sha = file_data["sha"]
+        content_b64 = file_data["content"]
+        members_json = json.loads(base64.b64decode(content_b64))
+
+        # 4. Add new citizen
+        today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        new_member = {
+            "npub": npub,
+            "role": "citizen",
+            "status": "active",
+            "member_since": today,
+            "display_name": display_name,
+            "services": [],
+            "upstream_authority_npub": upstream_npub,
+            "notes": "Admitted via Nostr signature-based onboarding",
+        }
+        members_json["members"].append(new_member)
+        updated_content = json.dumps(members_json, indent=2) + "\n"
+        updated_b64 = base64.b64encode(updated_content.encode()).decode()
+
+        # 5. Commit to branch
+        resp = await client.put(
+            f"{api}/contents/members.json",
+            json={
+                "message": f"[Citizenship] Add {display_name} ({npub_short})",
+                "content": updated_b64,
+                "sha": file_sha,
+                "branch": branch_name,
+            },
+        )
+        resp.raise_for_status()
+
+        # 6. Create PR
+        resp = await client.post(
+            f"{api}/pulls",
+            json={
+                "title": f"[Citizenship] Add {display_name} ({npub_short})",
+                "body": (
+                    f"## New Citizen Application\n\n"
+                    f"- **npub:** `{npub}`\n"
+                    f"- **Display name:** {display_name}\n"
+                    f"- **Verified via:** Nostr Schnorr signature (challenge-sign-verify)\n"
+                    f"- **Date:** {today}\n\n"
+                    f"This PR was automatically created by the DPYC Oracle after "
+                    f"the applicant proved ownership of their npub via a signed "
+                    f"Nostr event."
+                ),
+                "head": branch_name,
+                "base": "main",
+            },
+        )
+        resp.raise_for_status()
+        return resp.json()["html_url"]
 
 
 mcp = FastMCP("dpyc-oracle", instructions=INSTRUCTIONS)
@@ -216,6 +349,190 @@ async def network_advisory() -> str:
     """
     _, registry = _ensure_initialized()
     return await registry.get_text("ADVISORY.md")
+
+
+# --- Citizenship onboarding tools ---
+
+
+@mcp.tool()
+async def request_citizenship(npub: str, display_name: str) -> dict:
+    """Begin the citizenship application process.
+
+    Issues a cryptographic challenge that the applicant must sign with
+    their Nostr private key (nsec) to prove they own the claimed npub.
+    The nsec never leaves the applicant's device.
+
+    Returns a challenge_id, nonce, and signing instructions. The applicant
+    signs a Nostr event containing the nonce and submits it via
+    confirm_citizenship within 10 minutes.
+    """
+    # Validate npub format
+    try:
+        _validate_npub(npub)
+    except (ValueError, Exception) as exc:
+        return {"success": False, "error": f"Invalid npub: {exc}"}
+
+    # Check if already a member
+    _, registry = _ensure_initialized()
+    existing = await registry.lookup_member(npub)
+    if existing is not None:
+        return {
+            "success": False,
+            "error": f"Already a member with role '{existing.get('role')}'.",
+        }
+
+    # Prune expired challenges and check for pending
+    _prune_expired_challenges()
+    for ch in _challenges.values():
+        if ch["npub"] == npub:
+            return {
+                "success": False,
+                "error": "A pending challenge already exists for this npub. "
+                "Complete or wait for it to expire (10 minutes).",
+            }
+
+    # Issue challenge
+    challenge_id = str(uuid.uuid4())
+    nonce = secrets.token_hex(32)
+    _challenges[challenge_id] = {
+        "npub": npub,
+        "display_name": display_name,
+        "nonce": nonce,
+        "created_at": time.time(),
+        "expires_at": time.time() + _CHALLENGE_TTL_SECONDS,
+    }
+
+    return {
+        "success": True,
+        "challenge_id": challenge_id,
+        "nonce": nonce,
+        "expires_in_seconds": _CHALLENGE_TTL_SECONDS,
+        "instructions": (
+            "Sign a Nostr event with the content shown below, then call "
+            "confirm_citizenship with the signed event JSON.\n\n"
+            f"Required event content: {_CHALLENGE_PREFIX}{nonce}\n\n"
+            "Example using nostr-sdk:\n"
+            "```python\n"
+            "from nostr_sdk import Keys, EventBuilder\n"
+            "keys = Keys.parse('nsec1YOUR_SECRET_KEY')\n"
+            f"event = EventBuilder.text_note('{_CHALLENGE_PREFIX}{nonce}')"
+            ".sign_with_keys(keys)\n"
+            "print(event.as_json())\n"
+            "```"
+        ),
+    }
+
+
+@mcp.tool()
+async def confirm_citizenship(
+    npub: str,
+    challenge_id: str,
+    signed_event_json: str,
+) -> dict:
+    """Complete the citizenship application by submitting a signed Nostr event.
+
+    Verifies:
+    1. The challenge exists and hasn't expired
+    2. The Schnorr signature is valid
+    3. The event's pubkey matches the claimed npub
+    4. The event content contains the issued nonce
+    5. The npub is not already registered
+
+    On success, opens a PR against dpyc-community/members.json to register
+    the new Citizen.
+    """
+    _prune_expired_challenges()
+
+    # 1. Validate challenge
+    challenge = _challenges.get(challenge_id)
+    if challenge is None:
+        return {
+            "success": False,
+            "error": "Challenge not found or expired. Call request_citizenship again.",
+        }
+
+    if challenge["npub"] != npub:
+        return {
+            "success": False,
+            "error": "npub does not match the challenge.",
+        }
+
+    # 2. Parse and verify the signed event
+    try:
+        event = Event.from_json(signed_event_json)
+    except Exception as exc:
+        return {
+            "success": False,
+            "error": f"Failed to parse signed event JSON: {exc}",
+        }
+
+    try:
+        event.verify()
+    except Exception as exc:
+        return {
+            "success": False,
+            "error": f"Schnorr signature verification failed: {exc}",
+        }
+
+    # 3. Check pubkey matches claimed npub
+    try:
+        claimed_pk = _validate_npub(npub)
+    except (ValueError, Exception) as exc:
+        return {"success": False, "error": f"Invalid npub: {exc}"}
+
+    if event.author().to_hex() != claimed_pk.to_hex():
+        return {
+            "success": False,
+            "error": "Event pubkey does not match the claimed npub.",
+        }
+
+    # 4. Check nonce in content
+    expected_content = f"{_CHALLENGE_PREFIX}{challenge['nonce']}"
+    if expected_content not in event.content():
+        return {
+            "success": False,
+            "error": (
+                f"Event content must contain '{expected_content}'. "
+                f"Got: '{event.content()[:100]}'"
+            ),
+        }
+
+    # 5. Re-check membership (race condition guard)
+    settings, registry = _ensure_initialized()
+    registry.invalidate_cache()
+    existing = await registry.lookup_member(npub)
+    if existing is not None:
+        del _challenges[challenge_id]
+        return {
+            "success": False,
+            "error": "This npub was registered while your challenge was pending.",
+        }
+
+    # 6. Create PR
+    try:
+        pr_url = await _create_membership_pr(
+            settings, registry, npub, challenge["display_name"],
+        )
+    except Exception as exc:
+        logger.error("Failed to create membership PR: %s", exc)
+        return {
+            "success": False,
+            "error": f"Signature verified but PR creation failed: {exc}",
+        }
+
+    # 7. Clean up challenge
+    del _challenges[challenge_id]
+
+    return {
+        "success": True,
+        "status": "admitted",
+        "pr_url": pr_url,
+        "message": (
+            f"Welcome to the DPYC Honor Chain, {challenge['display_name']}! "
+            f"Your citizenship PR has been opened. Once merged by an Authority, "
+            f"you will be a registered Citizen."
+        ),
+    }
 
 
 # --- Stubbed future tools ---
