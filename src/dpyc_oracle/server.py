@@ -210,6 +210,72 @@ async def get_tax_rate() -> dict:
 
 
 @mcp.tool()
+async def economic_model() -> dict:
+    """Get the DPYC Honor Chain economic model summary and diagram.
+
+    Returns the network topology, fee structure, cascade effects, and
+    weekly revenue projections for a 5-Authority network at scale.
+    Includes a link to the canonical SVG diagram in dpyc-community.
+    Free, unauthenticated.
+    """
+    return {
+        "diagram_url": (
+            "https://raw.githubusercontent.com/lonniev/dpyc-community"
+            "/main/docs/diagrams/dpyc-network-5auth-economics.svg"
+        ),
+        "topology": {
+            "authorities": 5,
+            "operators": 30,
+            "patrons": "~200",
+            "chains": {
+                "C_to_B_to_A": {
+                    "hops": 3,
+                    "description": "C -> B -> A (cascading chain)",
+                },
+                "D_direct": {
+                    "hops": 1,
+                    "description": "D -> A (direct to First Curator)",
+                },
+                "E_direct": {
+                    "hops": 1,
+                    "description": "E -> A (direct to First Curator)",
+                },
+            },
+        },
+        "fees": {
+            "certification_fee_percent": 2,
+            "curator_royalty_percent": 2,
+            "description": (
+                "Each Authority collects a 2% ad valorem certification "
+                "fee per purchase order. The First Curator collects a "
+                "2% royalty on each settlement."
+            ),
+        },
+        "cascade_effect": {
+            "single_hop_effective_percent": 2.0,
+            "two_hop_effective_percent": 2.04,
+            "three_hop_effective_percent": 2.0408,
+            "cascade_overhead_at_max_depth_percent": 0.81,
+            "note": (
+                "Even at maximum chain depth (3 hops), the total "
+                "effective rate stays under 2.05%."
+            ),
+        },
+        "weekly_projections": {
+            "ecosystem_revenue_usd": "~$1,638",
+            "curator_revenue_usd": "~$32",
+            "assumptions": {
+                "btc_price_usd": "~$65,000",
+                "sats_per_usd": "1,000 sats ~ $0.65",
+                "operators": 30,
+                "tool_calls_per_hour": 1000,
+                "avg_api_sats_per_call": 15,
+            },
+        },
+    }
+
+
+@mcp.tool()
 async def get_rulebook() -> str:
     """Fetch the DPYC Honor Chain governance document.
 

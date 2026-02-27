@@ -114,6 +114,44 @@ async def test_get_tax_rate():
 
 
 @pytest.mark.asyncio
+async def test_economic_model():
+    result = await server_module.economic_model()
+    assert isinstance(result, dict)
+
+    # Diagram URL
+    assert "diagram_url" in result
+    assert "dpyc-network-5auth-economics.svg" in result["diagram_url"]
+    assert result["diagram_url"].startswith("https://raw.githubusercontent.com/")
+
+    # Topology
+    topo = result["topology"]
+    assert topo["authorities"] == 5
+    assert topo["operators"] == 30
+    assert "chains" in topo
+    assert "C_to_B_to_A" in topo["chains"]
+    assert topo["chains"]["C_to_B_to_A"]["hops"] == 3
+
+    # Fees
+    fees = result["fees"]
+    assert fees["certification_fee_percent"] == 2
+    assert fees["curator_royalty_percent"] == 2
+
+    # Cascade effect
+    cascade = result["cascade_effect"]
+    assert cascade["single_hop_effective_percent"] == 2.0
+    assert cascade["three_hop_effective_percent"] == 2.0408
+    assert cascade["cascade_overhead_at_max_depth_percent"] == 0.81
+
+    # Weekly projections
+    weekly = result["weekly_projections"]
+    assert "ecosystem_revenue_usd" in weekly
+    assert "curator_revenue_usd" in weekly
+    assert weekly["assumptions"]["operators"] == 30
+    assert weekly["assumptions"]["tool_calls_per_hour"] == 1000
+    assert weekly["assumptions"]["avg_api_sats_per_call"] == 15
+
+
+@pytest.mark.asyncio
 async def test_get_rulebook(mock_registry):
     result = await server_module.get_rulebook()
     assert "# Governance" in result
