@@ -394,7 +394,7 @@ async def test_confirm_citizenship_full_success(mock_registry):
         server_module,
         "_commit_membership",
         new_callable=AsyncMock,
-        return_value="https://github.com/lonniev/dpyc-community/blob/main/members.json",
+        return_value=f"https://github.com/lonniev/dpyc-community/blob/main/members/citizens/{npub}.json",
     ) as mock_commit:
         result = await server_module.confirm_citizenship(
             npub, req["challenge_id"], event.as_json()
@@ -402,7 +402,7 @@ async def test_confirm_citizenship_full_success(mock_registry):
 
     assert result["success"] is True
     assert result["status"] == "admitted"
-    assert "members.json" in result["commit_url"]
+    assert "members/citizens/" in result["commit_url"]
     assert "Welcome" in result["message"]
 
     # Challenge should be consumed

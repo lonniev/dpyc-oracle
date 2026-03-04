@@ -95,7 +95,11 @@ async def _commit_membership(
     npub: str,
     display_name: str,
 ) -> str:
-    """Commit a new citizen directly to main in members.json.
+    """Commit a new citizen as an individual file in members/citizens/.
+
+    Creates a single new file — no read-modify-write on members.json,
+    so no SHA conflicts when multiple citizens onboard simultaneously.
+    CI auto-regenerates the members.json index on push to main.
 
     The Schnorr signature verification is the trust check — no human
     review needed. Returns the commit URL.
@@ -118,39 +122,29 @@ async def _commit_membership(
     curator = await registry.get_first_curator()
     upstream_npub = curator["npub"] if curator else None
 
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    npub_short = npub[:16]
+    new_member = {
+        "npub": npub,
+        "role": "citizen",
+        "status": "active",
+        "member_since": today,
+        "display_name": display_name,
+        "services": [],
+        "upstream_authority_npub": upstream_npub,
+        "notes": "Admitted via Nostr signature-based citizenship onboarding",
+    }
+
+    file_path = f"members/citizens/{npub}.json"
+    content = json.dumps(new_member, indent=2, ensure_ascii=False) + "\n"
+    content_b64 = base64.b64encode(content.encode()).decode()
+
     async with httpx.AsyncClient(headers=headers, timeout=30.0) as client:
-        # 1. Get current members.json from main
-        resp = await client.get(f"{api}/contents/members.json?ref=main")
-        resp.raise_for_status()
-        file_data = resp.json()
-        file_sha = file_data["sha"]
-        content_b64 = file_data["content"]
-        members_json = json.loads(base64.b64decode(content_b64))
-
-        # 2. Add new citizen
-        today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-        npub_short = npub[:16]
-        new_member = {
-            "npub": npub,
-            "role": "citizen",
-            "status": "active",
-            "member_since": today,
-            "display_name": display_name,
-            "services": [],
-            "upstream_authority_npub": upstream_npub,
-            "notes": "Admitted via Nostr signature-based citizenship onboarding",
-        }
-        members_json["members"].append(new_member)
-        updated_content = json.dumps(members_json, indent=2) + "\n"
-        updated_b64 = base64.b64encode(updated_content.encode()).decode()
-
-        # 3. Commit directly to main
         resp = await client.put(
-            f"{api}/contents/members.json",
+            f"{api}/contents/{file_path}",
             json={
                 "message": f"[Citizenship] Add {display_name} ({npub_short})",
-                "content": updated_b64,
-                "sha": file_sha,
+                "content": content_b64,
             },
         )
         resp.raise_for_status()
