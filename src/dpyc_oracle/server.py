@@ -20,6 +20,17 @@ from dpyc_oracle.registry import CommunityRegistry
 
 logger = logging.getLogger(__name__)
 
+ECOSYSTEM_LINKS = {
+    "dpyc_community": "https://github.com/lonniev/dpyc-community",
+    "tollbooth_dpyc": "https://github.com/lonniev/tollbooth-dpyc",
+    "tollbooth_authority": "https://github.com/lonniev/tollbooth-authority",
+    "thebrain_mcp": "https://github.com/lonniev/thebrain-mcp",
+    "excalibur_mcp": "https://github.com/lonniev/excalibur-mcp",
+    "dpyc_oracle": "https://github.com/lonniev/dpyc-oracle",
+    "tollbooth_sample": "https://github.com/lonniev/tollbooth-sample",
+    "dpyc_oracle_mcp": "https://dpyc-oracle.fastmcp.app/mcp",
+}
+
 INSTRUCTIONS = """\
 DPYC Oracle — community concierge for the DPYC Honor Chain.
 
@@ -164,12 +175,18 @@ async def about() -> str:
     _, registry = _ensure_initialized()
     readme = await registry.get_text("README.md")
     governance = await registry.get_text("GOVERNANCE.md")
+    links_section = "\n".join(
+        f"- **{name}**: {url}" for name, url in ECOSYSTEM_LINKS.items()
+    )
     return (
         "# About the DPYC Honor Chain\n\n"
         f"{readme}\n\n"
         "---\n\n"
         "# Governance\n\n"
-        f"{governance}"
+        f"{governance}\n\n"
+        "---\n\n"
+        "# Ecosystem Links\n\n"
+        f"{links_section}"
     )
 
 
@@ -400,6 +417,7 @@ async def service_status() -> dict:
     return {
         "service": "dpyc-oracle",
         "versions": versions,
+        "ecosystem_links": ECOSYSTEM_LINKS,
     }
 
 
