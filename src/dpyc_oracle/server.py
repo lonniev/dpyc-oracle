@@ -426,7 +426,15 @@ async def service_status() -> dict:
 
 @mcp.tool()
 async def request_citizenship(npub: str, display_name: str) -> dict:
-    """Begin the citizenship application process.
+    """Begin the citizen registration process (Operator-owned flow).
+
+    This is the **citizen** registration path. Called by the Operator on
+    behalf of a patron — invokes the Oracle directly.  No Authority npub
+    is required or consulted.  The patron's npub is registered as a
+    Citizen in the DPYC community.
+
+    Not to be confused with **operator** registration, which goes through
+    the Authority via a Nostr DM delegation request.
 
     Issues a cryptographic challenge that the applicant must sign with
     their Nostr private key (nsec) to prove they own the claimed npub.
@@ -499,7 +507,11 @@ async def confirm_citizenship(
     challenge_id: str,
     signed_event_json: str,
 ) -> dict:
-    """Complete the citizenship application by submitting a signed Nostr event.
+    """Complete the citizen registration by submitting a signed Nostr event.
+
+    This is part of the **citizen** registration flow (Operator-owned).
+    The Operator calls this on behalf of a patron after the patron has
+    signed the cryptographic challenge from request_citizenship.
 
     Verifies:
     1. The challenge exists and hasn't expired
