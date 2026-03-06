@@ -616,46 +616,78 @@ async def confirm_citizenship(
     }
 
 
-# --- Stubbed future tools ---
+# --- Ban status & governance tools ---
 
 
 @mcp.tool()
-async def renounce_membership(npub: str) -> str:
+async def check_ban_status(npub: str) -> dict:
+    """Check whether an npub is banned from the Honor Chain.
+
+    Looks up the member in the community registry and checks whether
+    their status is "banned".  Unknown npubs are not considered banned
+    (they simply aren't members).
+
+    Free, unauthenticated.  Used by operators during the cold path
+    (credit purchases) to enforce community bans.
+    """
+    try:
+        _validate_npub(npub)
+    except (ValueError, Exception) as exc:
+        return {"banned": False, "error": f"Invalid npub: {exc}"}
+
+    _, registry = _ensure_initialized()
+    member = await registry.lookup_member(npub)
+
+    if member is None:
+        return {"banned": False, "reason": None}
+
+    status = member.get("status", "active")
+    if status == "banned":
+        return {
+            "banned": True,
+            "reason": member.get("ban_reason", "Community ban"),
+        }
+
+    return {"banned": False, "reason": None}
+
+
+@mcp.tool()
+async def renounce_membership(npub: str) -> dict:
     """Citizen self-removal from the Honor Chain via automated PR.
 
     Not yet implemented — will create a GitHub PR to remove the member
     from members.json.
     """
-    raise NotImplementedError(
-        "renounce_membership is not yet implemented. "
-        "TODO: Automate PR creation for self-removal from members.json."
-    )
+    return {
+        "status": "not_yet_implemented",
+        "message": "Voluntary membership renunciation is planned but not yet available.",
+    }
 
 
 @mcp.tool()
-async def initiate_ban_election(target_npub: str, reason: str) -> str:
+async def initiate_ban_election(target_npub: str, reason: str) -> dict:
     """Initiate a community ban election against a member.
 
     Not yet implemented — will create a GitHub Issue with a 72-hour
     discussion period and Lightning-funded economic voting.
     """
-    raise NotImplementedError(
-        "initiate_ban_election is not yet implemented. "
-        "TODO: Create GitHub Issue for ban election with economic voting."
-    )
+    return {
+        "status": "not_yet_implemented",
+        "message": "Ban elections are planned but not yet available.",
+    }
 
 
 @mcp.tool()
-async def cast_ban_vote(election_id: str, vote: str, npub: str) -> str:
+async def cast_ban_vote(election_id: str, vote: str, npub: str) -> dict:
     """Cast a Lightning-funded vote in an active ban election.
 
     Not yet implemented — will verify npub membership, validate the
     election is active, and record the vote with a Lightning payment proof.
     """
-    raise NotImplementedError(
-        "cast_ban_vote is not yet implemented. "
-        "TODO: Implement Lightning-funded ban voting mechanism."
-    )
+    return {
+        "status": "not_yet_implemented",
+        "message": "Ban voting is planned but not yet available.",
+    }
 
 
 if __name__ == "__main__":

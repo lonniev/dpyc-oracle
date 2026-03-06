@@ -10,6 +10,7 @@ from dpyc_oracle.registry import CommunityRegistry
 
 ALICE_NPUB = "npub1xsll09qfnrkv6jazqu934n872nplcue276slenl0eayqhwp3jdesmaz7mh"
 CURATOR_NPUB = "npub1t0dhxjmwrlqpgc576wjxyeczv4d2lu3z8582uk8s8m3rh9w06a7sdwszm8"
+BANNED_NPUB = "npub165lcuua3ahzd4388xswem27ql4v5x5tjl9h52mstn4wua5m8a62s7mdze7"
 
 SAMPLE_MEMBERS = {
     "members": [
@@ -25,6 +26,14 @@ SAMPLE_MEMBERS = {
             "role": "prime_authority",
             "status": "active",
             "display_name": "The Curator",
+            "services": [],
+        },
+        {
+            "npub": BANNED_NPUB,
+            "role": "citizen",
+            "status": "banned",
+            "display_name": "Bad Actor",
+            "ban_reason": "Community vote: spam",
             "services": [],
         },
     ]
@@ -216,20 +225,20 @@ async def test_service_status():
 
 @pytest.mark.asyncio
 async def test_stub_renounce_membership():
-    with pytest.raises(NotImplementedError, match="renounce_membership"):
-        await server_module.renounce_membership(ALICE_NPUB)
+    result = await server_module.renounce_membership(ALICE_NPUB)
+    assert result["status"] == "not_yet_implemented"
 
 
 @pytest.mark.asyncio
 async def test_stub_initiate_ban_election():
-    with pytest.raises(NotImplementedError, match="initiate_ban_election"):
-        await server_module.initiate_ban_election(ALICE_NPUB, "spam")
+    result = await server_module.initiate_ban_election(ALICE_NPUB, "spam")
+    assert result["status"] == "not_yet_implemented"
 
 
 @pytest.mark.asyncio
 async def test_stub_cast_ban_vote():
-    with pytest.raises(NotImplementedError, match="cast_ban_vote"):
-        await server_module.cast_ban_vote("election-1", "ban", ALICE_NPUB)
+    result = await server_module.cast_ban_vote("election-1", "ban", ALICE_NPUB)
+    assert result["status"] == "not_yet_implemented"
 
 
 # ---------------------------------------------------------------------------
@@ -413,6 +422,41 @@ async def test_confirm_citizenship_full_success(mock_registry):
     call_args = mock_commit.call_args
     assert call_args[0][2] == npub  # npub arg
     assert call_args[0][3] == "New Citizen"  # display_name arg
+
+
+# ---------------------------------------------------------------------------
+# check_ban_status
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_check_ban_status_active_member(mock_registry):
+    result = await server_module.check_ban_status(ALICE_NPUB)
+    assert result["banned"] is False
+    assert result["reason"] is None
+
+
+@pytest.mark.asyncio
+async def test_check_ban_status_banned_member(mock_registry):
+    result = await server_module.check_ban_status(BANNED_NPUB)
+    assert result["banned"] is True
+    assert "spam" in result["reason"]
+
+
+@pytest.mark.asyncio
+async def test_check_ban_status_unknown_npub(mock_registry):
+    """Unknown npub is not banned — they're just not a member."""
+    keys = Keys.generate()
+    unknown_npub = keys.public_key().to_bech32()
+    result = await server_module.check_ban_status(unknown_npub)
+    assert result["banned"] is False
+
+
+@pytest.mark.asyncio
+async def test_check_ban_status_invalid_npub(mock_registry):
+    result = await server_module.check_ban_status("not-an-npub")
+    assert result["banned"] is False
+    assert "Invalid npub" in result.get("error", "")
 
 
 @pytest.mark.asyncio
