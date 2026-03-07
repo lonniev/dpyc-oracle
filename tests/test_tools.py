@@ -482,3 +482,119 @@ async def test_confirm_citizenship_pr_failure_returns_error(mock_registry):
 
     assert result["success"] is False
     assert "membership commit failed" in result["error"]
+
+
+# ---------------------------------------------------------------------------
+# register_authority
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_register_authority_success(mock_registry):
+    """New authority with valid upstream is committed to the registry."""
+    _, new_npub = _generate_test_keys()
+
+    with patch.object(
+        server_module,
+        "_commit_authority",
+        new_callable=AsyncMock,
+        return_value=f"https://github.com/lonniev/dpyc-community/blob/main/members/authorities/{new_npub}.json",
+    ) as mock_commit:
+        result = await server_module.register_authority(
+            authority_npub=new_npub,
+            display_name="New Authority",
+            service_url="https://new-authority.example.com/mcp",
+            upstream_authority_npub=CURATOR_NPUB,
+        )
+
+    assert result["success"] is True
+    assert result["status"] == "registered"
+    assert "members/authorities/" in result["commit_url"]
+    assert "New Authority" in result["message"]
+    mock_commit.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_register_authority_invalid_npub(mock_registry):
+    result = await server_module.register_authority(
+        authority_npub="not-an-npub",
+        display_name="Bad",
+        service_url="https://example.com",
+        upstream_authority_npub=CURATOR_NPUB,
+    )
+    assert result["success"] is False
+    assert "Invalid authority_npub" in result["error"]
+
+
+@pytest.mark.asyncio
+async def test_register_authority_invalid_upstream_npub(mock_registry):
+    _, new_npub = _generate_test_keys()
+    result = await server_module.register_authority(
+        authority_npub=new_npub,
+        display_name="New",
+        service_url="https://example.com",
+        upstream_authority_npub="not-an-npub",
+    )
+    assert result["success"] is False
+    assert "Invalid upstream_authority_npub" in result["error"]
+
+
+@pytest.mark.asyncio
+async def test_register_authority_upstream_not_found(mock_registry):
+    _, new_npub = _generate_test_keys()
+    _, unknown_upstream = _generate_test_keys()
+    result = await server_module.register_authority(
+        authority_npub=new_npub,
+        display_name="New",
+        service_url="https://example.com",
+        upstream_authority_npub=unknown_upstream,
+    )
+    assert result["success"] is False
+    assert "not found" in result["error"]
+
+
+@pytest.mark.asyncio
+async def test_register_authority_upstream_wrong_role(mock_registry):
+    """Upstream must be authority or prime_authority, not citizen/operator."""
+    _, new_npub = _generate_test_keys()
+    result = await server_module.register_authority(
+        authority_npub=new_npub,
+        display_name="New",
+        service_url="https://example.com",
+        upstream_authority_npub=ALICE_NPUB,  # Alice is an operator
+    )
+    assert result["success"] is False
+    assert "not 'authority'" in result["error"]
+
+
+@pytest.mark.asyncio
+async def test_register_authority_already_registered(mock_registry):
+    result = await server_module.register_authority(
+        authority_npub=ALICE_NPUB,  # Already registered as operator
+        display_name="Alice",
+        service_url="https://example.com",
+        upstream_authority_npub=CURATOR_NPUB,
+    )
+    assert result["success"] is False
+    assert "already registered" in result["error"]
+
+
+@pytest.mark.asyncio
+async def test_register_authority_commit_failure(mock_registry):
+    _, new_npub = _generate_test_keys()
+
+    with patch.object(
+        server_module,
+        "_commit_authority",
+        new_callable=AsyncMock,
+        side_effect=RuntimeError("GitHub token not configured"),
+    ):
+        result = await server_module.register_authority(
+            authority_npub=new_npub,
+            display_name="New",
+            service_url="https://example.com",
+            upstream_authority_npub=CURATOR_NPUB,
+        )
+
+    assert result["success"] is False
+    assert "commit failed" in result["error"]

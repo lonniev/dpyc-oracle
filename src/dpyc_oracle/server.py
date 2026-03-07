@@ -49,6 +49,12 @@ and collect a small tax on every purchase order. The First Curator (Prime \
 Authority) sits at the root of the chain and mints the initial cert-sat \
 supply. Membership tiers: Citizen → Operator → Authority → First Curator.
 
+Authority onboarding uses a Nostr DM challenge-response protocol: \
+candidates call register_authority_npub on their Authority service, \
+prove npub ownership via DM, and receive Prime Authority approval. The \
+Oracle's register_authority tool commits the new Authority to the \
+community registry once the onboarding flow completes.
+
 This Oracle is a free, unauthenticated concierge that answers questions \
 about membership, governance, onboarding, and tax rates by reading the \
 dpyc-community registry on GitHub. It does not require payment or \
@@ -155,6 +161,67 @@ async def _commit_membership(
             f"{api}/contents/{file_path}",
             json={
                 "message": f"[Citizenship] Add {display_name} ({npub_short})",
+                "content": content_b64,
+            },
+        )
+        resp.raise_for_status()
+        return resp.json()["content"]["html_url"]
+
+
+async def _commit_authority(
+    settings: OracleSettings,
+    registry: CommunityRegistry,
+    authority_npub: str,
+    display_name: str,
+    service_url: str,
+    upstream_authority_npub: str,
+) -> str:
+    """Commit a new Authority as an individual file in members/authorities/.
+
+    Same pattern as ``_commit_membership`` but writes role ``"authority"``
+    with a service entry. Returns the commit URL.
+    """
+    token = settings.github_token
+    if not token:
+        raise RuntimeError(
+            "GitHub token not configured. Set GITHUB_TOKEN env var on "
+            "FastMCP Cloud to enable automated membership commits."
+        )
+
+    repo = settings.dpyc_community_repo
+    api = f"https://api.github.com/repos/{repo}"
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Accept": "application/vnd.github+json",
+    }
+
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    npub_short = authority_npub[:16]
+    new_member = {
+        "npub": authority_npub,
+        "role": "authority",
+        "status": "active",
+        "member_since": today,
+        "display_name": display_name,
+        "services": [
+            {
+                "name": "tollbooth-authority",
+                "url": service_url,
+            },
+        ],
+        "upstream_authority_npub": upstream_authority_npub,
+        "notes": "Admitted via Authority onboarding protocol (Nostr DM challenge-response)",
+    }
+
+    file_path = f"members/authorities/{authority_npub}.json"
+    content = json.dumps(new_member, indent=2, ensure_ascii=False) + "\n"
+    content_b64 = base64.b64encode(content.encode()).decode()
+
+    async with httpx.AsyncClient(headers=headers, timeout=30.0) as client:
+        resp = await client.put(
+            f"{api}/contents/{file_path}",
+            json={
+                "message": f"[Authority] Add {display_name} ({npub_short})",
                 "content": content_b64,
             },
         )
@@ -333,11 +400,14 @@ nak key generate    # prints nsec (private) and npub (public)
 - Install `tollbooth-dpyc` in your MCP server for Lightning fare collection
 - Configure your BTCPay Server instance for payment processing
 
-### Authority (Certify Operators)
-- Must already be an active Operator in good standing
-- Requires sponsorship from an existing Authority or the First Curator
-- Deploy `tollbooth-authority` to issue EdDSA-signed purchase certificates
-- Fund your tax balance with the upstream Authority via Lightning
+### Authority (Curate and Certify Operators)
+1. Deploy `tollbooth-authority` as your MCP service
+2. Generate a Nostr keypair for the Authority's signing identity
+3. Call `register_authority_npub(your_npub)` on your Authority service
+4. Reply to the challenge DM in your Nostr client with: `claim = @@@yes@@@`
+5. Call `confirm_authority_claim(your_npub)` — this sends an approval request to the Prime Authority
+6. Wait for Prime Authority to approve via Nostr DM
+7. Call `check_authority_approval(your_npub)` — on success, your Authority is registered in the community and discoverable by Operators
 
 ### First Curator (Prime Authority)
 - There is exactly one First Curator at the root of the Honor Chain
@@ -612,6 +682,109 @@ async def confirm_citizenship(
         "message": (
             f"Welcome to the DPYC Honor Chain, {challenge['display_name']}! "
             f"Your membership has been registered. You are now a Citizen."
+        ),
+    }
+
+
+# --- Authority registration (called by Authority onboarding flow) ---
+
+
+@mcp.tool()
+async def register_authority(
+    authority_npub: str,
+    display_name: str,
+    service_url: str,
+    upstream_authority_npub: str,
+) -> dict:
+    """Register a new Authority in the DPYC community registry.
+
+    Called by an Authority service at the end of the onboarding protocol
+    (after the candidate proves npub ownership and the Prime Authority
+    approves). Commits a new ``members/authorities/{npub}.json`` file to
+    dpyc-community on GitHub.
+
+    The full Authority onboarding protocol is a 3-step Nostr DM
+    challenge-response flow:
+    1. ``register_authority_npub(npub)`` — Authority sends DM challenge
+    2. ``confirm_authority_claim(npub)`` — verifies candidate DM, escalates to Prime
+    3. ``check_authority_approval(npub)`` — Prime approves, this tool is called
+
+    Parameters:
+        authority_npub: Nostr npub of the new Authority curator.
+        display_name: Human-readable name for the Authority.
+        service_url: Public MCP endpoint URL of the Authority service.
+        upstream_authority_npub: npub of the sponsoring Authority (must
+            already exist as a prime_authority or authority in the registry).
+    """
+    # Validate npub format
+    try:
+        _validate_npub(authority_npub)
+    except (ValueError, Exception) as exc:
+        return {"success": False, "error": f"Invalid authority_npub: {exc}"}
+
+    try:
+        _validate_npub(upstream_authority_npub)
+    except (ValueError, Exception) as exc:
+        return {"success": False, "error": f"Invalid upstream_authority_npub: {exc}"}
+
+    settings, registry = _ensure_initialized()
+
+    # Verify upstream authority exists and has appropriate role
+    upstream = await registry.lookup_member(upstream_authority_npub)
+    if upstream is None:
+        return {
+            "success": False,
+            "error": (
+                f"Upstream authority {upstream_authority_npub[:16]}... "
+                "not found in the registry."
+            ),
+        }
+    if upstream.get("role") not in ("prime_authority", "authority"):
+        return {
+            "success": False,
+            "error": (
+                f"Upstream member {upstream_authority_npub[:16]}... has role "
+                f"'{upstream.get('role')}', not 'authority' or 'prime_authority'."
+            ),
+        }
+
+    # Check if authority_npub is already registered
+    existing = await registry.lookup_member(authority_npub)
+    if existing is not None:
+        return {
+            "success": False,
+            "error": (
+                f"npub {authority_npub[:16]}... is already registered "
+                f"with role '{existing.get('role')}'."
+            ),
+        }
+
+    # Commit to GitHub
+    try:
+        registry.invalidate_cache()
+        commit_url = await _commit_authority(
+            settings,
+            registry,
+            authority_npub,
+            display_name,
+            service_url,
+            upstream_authority_npub,
+        )
+    except Exception as exc:
+        logger.error("Failed to commit authority membership: %s", exc)
+        return {
+            "success": False,
+            "error": f"Registry commit failed: {exc}",
+        }
+
+    return {
+        "success": True,
+        "status": "registered",
+        "commit_url": commit_url,
+        "message": (
+            f"Authority '{display_name}' ({authority_npub[:16]}...) "
+            f"registered under upstream {upstream_authority_npub[:16]}... "
+            f"and is now discoverable by Operators."
         ),
     }
 
