@@ -322,11 +322,12 @@ async def economic_model() -> dict:
         },
         "fees": {
             "certification_fee_percent": 2,
-            "curator_royalty_percent": 2,
             "description": (
                 "Each Authority collects a 2% ad valorem certification "
-                "fee per purchase order. The First Curator collects a "
-                "2% royalty on each settlement."
+                "fee per purchase order. The Prime Authority receives "
+                "revenue through the certification fee cascade — Authorities "
+                "are Operators of their upstream Authority and pay the same "
+                "fee when topping up their cert-sat reserve."
             ),
         },
         "cascade_effect": {

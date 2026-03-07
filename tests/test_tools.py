@@ -143,7 +143,7 @@ async def test_economic_model():
     # Fees
     fees = result["fees"]
     assert fees["certification_fee_percent"] == 2
-    assert fees["curator_royalty_percent"] == 2
+    assert "curator_royalty_percent" not in fees
 
     # Cascade effect
     cascade = result["cascade_effect"]
