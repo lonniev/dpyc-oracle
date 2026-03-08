@@ -114,9 +114,9 @@ async def _commit_membership(
 ) -> str:
     """Commit a new citizen as an individual file in members/citizens/.
 
-    Creates a single new file — no read-modify-write on members.json,
+    Creates a single new file — no read-modify-write on the lookup cache,
     so no SHA conflicts when multiple citizens onboard simultaneously.
-    CI auto-regenerates the members.json index on push to main.
+    CI auto-regenerates the lookup cache on push to main.
 
     The Schnorr signature verification is the trust check — no human
     review needed. Returns the commit URL.
@@ -400,11 +400,11 @@ nak key generate    # prints nsec (private) and npub (public)
 ### Citizen (Observer)
 - No sponsorship required
 - Read governance docs, follow community discussions
-- To formalize: ask any Authority to sponsor your PR to members.json
+- To formalize: ask any Authority to sponsor your PR to the community registry
 
 ### Operator (Run MCP Services)
 - Find a sponsoring Authority willing to vouch for you
-- The Authority submits a PR to `dpyc-community/members.json` adding your record
+- The Authority submits a PR adding `members/operators/{npub}.json` to the registry
 - Install `tollbooth-dpyc` in your MCP server for Lightning fare collection
 - Configure your BTCPay Server instance for payment processing
 
@@ -602,8 +602,8 @@ async def confirm_citizenship(
     4. The event content contains the issued nonce
     5. The npub is not already registered
 
-    On success, commits directly to dpyc-community/members.json to register
-    the new Citizen immediately.
+    On success, commits directly to dpyc-community/members/citizens/{npub}.json
+    to register the new Citizen immediately.
     """
     _prune_expired_challenges()
 
@@ -841,7 +841,7 @@ async def renounce_membership(npub: str) -> dict:
     """Citizen self-removal from the Honor Chain via automated PR.
 
     Not yet implemented — will create a GitHub PR to remove the member
-    from members.json.
+    from the registry.
     """
     return {
         "status": "not_yet_implemented",

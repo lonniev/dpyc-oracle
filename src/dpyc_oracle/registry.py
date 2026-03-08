@@ -60,12 +60,12 @@ class CommunityRegistry:
         return text
 
     async def get_members(self) -> list[dict[str, Any]]:
-        data = await self._fetch_json("members.json")
+        data = await self._fetch_json("members/read-only-lookup-cache.json")
         try:
             return data["members"]
         except (KeyError, TypeError) as exc:
             raise RegistryError(
-                "members.json missing 'members' key"
+                "read-only-lookup-cache.json missing 'members' key"
             ) from exc
 
     async def get_text(self, path: str) -> str:
