@@ -261,6 +261,7 @@ async def about() -> str:
 async def lookup_member(npub: str) -> dict | str:
     """Look up a member by their Nostr npub.
 
+    Can look up any role's npub — citizen, operator, or authority.
     Returns the full member record if found, or a not-found message.
     """
     _, registry = _ensure_initialized()
@@ -388,6 +389,12 @@ nak key generate    # prints nsec (private) and npub (public)
 
 **Keep your nsec private key safe.** You only share your npub.
 
+> **Multiple keypairs**: Advanced users may generate separate keypairs for
+> different roles. The npub you register as a Citizen becomes your
+> **patron npub** — the identity used for credit purchases and service
+> access. Operators and Authorities typically generate a dedicated keypair
+> for their service identity, separate from their patron npub.
+
 ## Step 2 — Choose Your Tier
 
 ### Citizen (Observer)
@@ -503,6 +510,10 @@ async def request_citizenship(npub: str, display_name: str) -> dict:
     behalf of a patron — invokes the Oracle directly.  No Authority npub
     is required or consulted.  The patron's npub is registered as a
     Citizen in the DPYC community.
+
+    The npub provided here becomes the user's **patron identity** — the
+    keypair they will use for credit purchases and service access across
+    all Tollbooth-monetized services.
 
     Not to be confused with **operator** registration, which goes through
     the Authority via a Nostr DM delegation request.
