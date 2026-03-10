@@ -170,6 +170,7 @@ async def test_get_rulebook(mock_registry):
 async def test_how_to_join():
     result = await server_module.how_to_join()
     assert "Citizen" in result
+    assert "Advocate" in result
     assert "Operator" in result
     assert "Authority" in result
     assert "First Curator" in result
@@ -594,6 +595,86 @@ async def test_register_authority_commit_failure(mock_registry):
             display_name="New",
             service_url="https://example.com",
             upstream_authority_npub=CURATOR_NPUB,
+        )
+
+    assert result["success"] is False
+    assert "commit failed" in result["error"]
+
+
+# ---------------------------------------------------------------------------
+# register_advocate
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_register_advocate_success(mock_registry):
+    """New advocate with valid service info is committed to the registry."""
+    _, new_npub = _generate_test_keys()
+
+    with patch.object(
+        server_module,
+        "_commit_advocate",
+        new_callable=AsyncMock,
+        return_value=f"https://github.com/lonniev/dpyc-community/blob/main/members/advocates/{new_npub}.json",
+    ) as mock_commit:
+        result = await server_module.register_advocate(
+            npub=new_npub,
+            display_name="OAuth2 Collector",
+            service_name="tollbooth-oauth2-collector",
+            service_url="https://tollbooth-oauth2-collector.fastmcp.app",
+            service_description="Community OAuth2 callback mailbox",
+        )
+
+    assert result["success"] is True
+    assert result["status"] == "registered"
+    assert "members/advocates/" in result["commit_url"]
+    assert "OAuth2 Collector" in result["message"]
+    assert "tollbooth-oauth2-collector" in result["message"]
+    mock_commit.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_register_advocate_invalid_npub(mock_registry):
+    result = await server_module.register_advocate(
+        npub="not-an-npub",
+        display_name="Bad",
+        service_name="svc",
+        service_url="https://example.com",
+        service_description="desc",
+    )
+    assert result["success"] is False
+    assert "Invalid npub" in result["error"]
+
+
+@pytest.mark.asyncio
+async def test_register_advocate_already_registered(mock_registry):
+    result = await server_module.register_advocate(
+        npub=ALICE_NPUB,  # Already registered as operator
+        display_name="Alice",
+        service_name="svc",
+        service_url="https://example.com",
+        service_description="desc",
+    )
+    assert result["success"] is False
+    assert "already registered" in result["error"]
+
+
+@pytest.mark.asyncio
+async def test_register_advocate_commit_failure(mock_registry):
+    _, new_npub = _generate_test_keys()
+
+    with patch.object(
+        server_module,
+        "_commit_advocate",
+        new_callable=AsyncMock,
+        side_effect=RuntimeError("GitHub token not configured"),
+    ):
+        result = await server_module.register_advocate(
+            npub=new_npub,
+            display_name="Collector",
+            service_name="svc",
+            service_url="https://example.com",
+            service_description="desc",
         )
 
     assert result["success"] is False
