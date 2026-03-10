@@ -47,7 +47,12 @@ agree to transparent, auditable economic rules. Operators run MCP services \
 and collect Lightning fares via Tollbooths. Authorities certify Operators \
 and collect a small tax on every purchase order. The First Curator (Prime \
 Authority) sits at the root of the chain and mints the initial cert-sat \
-supply. Membership tiers: Citizen → Operator → Authority → First Curator.
+supply. Membership tiers: Citizen → Advocate → Operator → Authority → First Curator.
+
+Advocates are community utility services (e.g., OAuth2 collectors) that \
+provide shared infrastructure but aren't monetized Operators or \
+certification Authorities. They register via the Oracle's \
+register_advocate tool.
 
 Authority onboarding uses a Nostr DM challenge-response protocol: \
 candidates call register_authority_npub on their Authority service, \
@@ -229,6 +234,65 @@ async def _commit_authority(
         return resp.json()["content"]["html_url"]
 
 
+async def _commit_advocate(
+    settings: OracleSettings,
+    registry: CommunityRegistry,
+    npub: str,
+    display_name: str,
+    services: list[dict],
+) -> str:
+    """Commit a new Advocate as an individual file in members/advocates/.
+
+    Same pattern as ``_commit_membership`` but writes role ``"advocate"``
+    with required service entries. Returns the commit URL.
+    """
+    token = settings.github_token
+    if not token:
+        raise RuntimeError(
+            "GitHub token not configured. Set GITHUB_TOKEN env var on "
+            "FastMCP Cloud to enable automated membership commits."
+        )
+
+    repo = settings.dpyc_community_repo
+    api = f"https://api.github.com/repos/{repo}"
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Accept": "application/vnd.github+json",
+    }
+
+    # Fetch the Prime Authority npub for upstream_authority_npub
+    curator = await registry.get_first_curator()
+    upstream_npub = curator["npub"] if curator else None
+
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    npub_short = npub[:16]
+    new_member = {
+        "npub": npub,
+        "role": "advocate",
+        "status": "active",
+        "member_since": today,
+        "display_name": display_name,
+        "services": services,
+        "upstream_authority_npub": upstream_npub,
+        "notes": "Registered as community utility Advocate via Oracle",
+    }
+
+    file_path = f"members/advocates/{npub}.json"
+    content = json.dumps(new_member, indent=2, ensure_ascii=False) + "\n"
+    content_b64 = base64.b64encode(content.encode()).decode()
+
+    async with httpx.AsyncClient(headers=headers, timeout=30.0) as client:
+        resp = await client.put(
+            f"{api}/contents/{file_path}",
+            json={
+                "message": f"[Advocate] Add {display_name} ({npub_short})",
+                "content": content_b64,
+            },
+        )
+        resp.raise_for_status()
+        return resp.json()["content"]["html_url"]
+
+
 mcp = FastMCP("dpyc-oracle", instructions=INSTRUCTIONS)
 
 
@@ -369,8 +433,9 @@ async def get_rulebook() -> str:
 async def how_to_join() -> str:
     """Tier-specific onboarding guide for joining the DPYC Honor Chain.
 
-    Covers all four tiers: Citizen, Operator, Authority, and First Curator.
-    Includes Nostr keygen instructions and practical next steps.
+    Covers all five tiers: Citizen, Advocate, Operator, Authority, and
+    First Curator. Includes Nostr keygen instructions and practical next
+    steps.
     """
     return """\
 # How to Join the DPYC Honor Chain
@@ -401,6 +466,14 @@ nak key generate    # prints nsec (private) and npub (public)
 - No sponsorship required
 - Read governance docs, follow community discussions
 - To formalize: ask any Authority to sponsor your PR to the community registry
+
+### Advocate (Community Utility Service)
+- For services that provide shared infrastructure (e.g., OAuth2 collectors)
+- Not monetized — no Tollbooth fare collection
+- Generate a Nostr keypair for the service identity
+- Call the Oracle's `register_advocate` tool with your npub, service name, URL, and description
+- The Oracle commits your record to `members/advocates/{npub}.json`
+- Other MCP services discover your URL via registry lookup
 
 ### Operator (Run MCP Services)
 - Find a sponsoring Authority willing to vouch for you
@@ -797,6 +870,87 @@ async def register_authority(
             f"Authority '{display_name}' ({authority_npub[:16]}...) "
             f"registered under upstream {upstream_authority_npub[:16]}... "
             f"and is now discoverable by Operators."
+        ),
+    }
+
+
+# --- Advocate registration (Oracle-mediated, no challenge-response) ---
+
+
+@mcp.tool()
+async def register_advocate(
+    npub: str,
+    display_name: str,
+    service_name: str,
+    service_url: str,
+    service_description: str,
+) -> dict:
+    """Register a new Advocate in the DPYC community registry.
+
+    Advocates are community utility services that provide shared
+    infrastructure (e.g., OAuth2 callback collectors) but aren't
+    monetized Operators or certification Authorities.
+
+    This is an Oracle-mediated registration — no Nostr DM
+    challenge-response needed. The Oracle operator (Prime Authority)
+    trusts the commit via GitHub token.
+
+    Parameters:
+        npub: Nostr npub of the Advocate service.
+        display_name: Human-readable name for the service.
+        service_name: Machine-readable service identifier
+            (e.g., "tollbooth-oauth2-collector").
+        service_url: Public URL of the service.
+        service_description: Short description of what the service does.
+    """
+    # Validate npub format
+    try:
+        _validate_npub(npub)
+    except (ValueError, Exception) as exc:
+        return {"success": False, "error": f"Invalid npub: {exc}"}
+
+    settings, registry = _ensure_initialized()
+
+    # Check if already registered
+    existing = await registry.lookup_member(npub)
+    if existing is not None:
+        return {
+            "success": False,
+            "error": (
+                f"npub {npub[:16]}... is already registered "
+                f"with role '{existing.get('role')}'."
+            ),
+        }
+
+    services = [
+        {
+            "name": service_name,
+            "url": service_url,
+            "description": service_description,
+        },
+    ]
+
+    # Commit to GitHub
+    try:
+        registry.invalidate_cache()
+        commit_url = await _commit_advocate(
+            settings, registry, npub, display_name, services,
+        )
+    except Exception as exc:
+        logger.error("Failed to commit advocate membership: %s", exc)
+        return {
+            "success": False,
+            "error": f"Registry commit failed: {exc}",
+        }
+
+    return {
+        "success": True,
+        "status": "registered",
+        "commit_url": commit_url,
+        "message": (
+            f"Advocate '{display_name}' ({npub[:16]}...) registered "
+            f"with service '{service_name}' and is now discoverable "
+            f"in the DPYC registry."
         ),
     }
 
