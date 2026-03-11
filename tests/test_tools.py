@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from nostr_sdk import Keys, EventBuilder
@@ -679,3 +679,163 @@ async def test_register_advocate_commit_failure(mock_registry):
 
     assert result["success"] is False
     assert "commit failed" in result["error"]
+
+
+# ---------------------------------------------------------------------------
+# _commit_advocate — lookup cache update
+# ---------------------------------------------------------------------------
+
+SAMPLE_CACHE = {
+    "$schema": "../schemas/members.schema.json",
+    "version": "1.1.0",
+    "updated_at": "2026-03-01T00:00:00Z",
+    "members": [
+        {
+            "npub": CURATOR_NPUB,
+            "role": "prime_authority",
+            "status": "active",
+            "display_name": "The Curator",
+        },
+    ],
+}
+
+
+def _make_settings_mock(github_token: str = "ghp_test123") -> MagicMock:
+    """Create a mock OracleSettings."""
+    s = MagicMock()
+    s.github_token = github_token
+    s.dpyc_community_repo = "lonniev/dpyc-community"
+    return s
+
+
+@pytest.mark.asyncio
+async def test_commit_advocate_updates_lookup_cache():
+    """_commit_advocate writes the individual file AND updates the cache."""
+    import base64
+    import json
+
+    _, new_npub = _generate_test_keys()
+    settings = _make_settings_mock()
+
+    registry = AsyncMock(spec=CommunityRegistry)
+    registry.get_first_curator = AsyncMock(
+        return_value={"npub": CURATOR_NPUB}
+    )
+
+    cache_b64 = base64.b64encode(
+        json.dumps(SAMPLE_CACHE).encode()
+    ).decode()
+
+    # Build response mocks for the three HTTP calls.
+    # httpx Response.json() and .raise_for_status() are sync, so use
+    # MagicMock (not AsyncMock) for the response objects.
+
+    # 1. PUT individual file
+    put_file_resp = MagicMock()
+    put_file_resp.raise_for_status = MagicMock()
+    put_file_resp.json.return_value = {
+        "content": {
+            "html_url": (
+                f"https://github.com/lonniev/dpyc-community/"
+                f"blob/main/members/advocates/{new_npub}.json"
+            )
+        }
+    }
+
+    # 2. GET cache file (returns current content + sha)
+    get_cache_resp = MagicMock()
+    get_cache_resp.raise_for_status = MagicMock()
+    get_cache_resp.json.return_value = {
+        "sha": "abc123",
+        "content": cache_b64,
+    }
+
+    # 3. PUT cache file
+    put_cache_resp = MagicMock()
+    put_cache_resp.raise_for_status = MagicMock()
+    put_cache_resp.json.return_value = {"content": {"html_url": "..."}}
+
+    # Sequence the httpx calls: PUT (file), GET (cache), PUT (cache)
+    mock_client = AsyncMock()
+    mock_client.put = AsyncMock(side_effect=[put_file_resp, put_cache_resp])
+    mock_client.get = AsyncMock(return_value=get_cache_resp)
+    mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+    mock_client.__aexit__ = AsyncMock(return_value=False)
+
+    with patch("dpyc_oracle.server.httpx.AsyncClient", return_value=mock_client):
+        url = await server_module._commit_advocate(
+            settings,
+            registry,
+            new_npub,
+            "Test Advocate",
+            [{"name": "test-svc", "url": "https://test.example.com"}],
+        )
+
+    assert "members/advocates/" in url
+
+    # Verify the cache PUT was called with the new member appended
+    assert mock_client.put.call_count == 2
+    cache_put_call = mock_client.put.call_args_list[1]
+    cache_body = cache_put_call.kwargs["json"]
+    assert cache_body["sha"] == "abc123"
+    assert "[Advocate] Update lookup cache" in cache_body["message"]
+
+    # Decode the written cache content and verify the new member is present
+    written_bytes = base64.b64decode(cache_body["content"])
+    written_cache = json.loads(written_bytes)
+    npubs_in_cache = [m["npub"] for m in written_cache["members"]]
+    assert new_npub in npubs_in_cache
+    assert CURATOR_NPUB in npubs_in_cache
+    assert len(written_cache["members"]) == 2
+
+    # Registry cache should be invalidated
+    registry.invalidate_cache.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_commit_advocate_cache_update_failure_is_non_fatal():
+    """If cache update fails, _commit_advocate still returns success."""
+    _, new_npub = _generate_test_keys()
+    settings = _make_settings_mock()
+
+    registry = AsyncMock(spec=CommunityRegistry)
+    registry.get_first_curator = AsyncMock(
+        return_value={"npub": CURATOR_NPUB}
+    )
+
+    # PUT individual file succeeds (sync .json() like real httpx)
+    put_file_resp = MagicMock()
+    put_file_resp.raise_for_status = MagicMock()
+    put_file_resp.json.return_value = {
+        "content": {
+            "html_url": (
+                f"https://github.com/lonniev/dpyc-community/"
+                f"blob/main/members/advocates/{new_npub}.json"
+            )
+        }
+    }
+
+    # GET cache fails with an HTTP error
+    mock_client = AsyncMock()
+    mock_client.put = AsyncMock(return_value=put_file_resp)
+    mock_client.get = AsyncMock(side_effect=Exception("Network error"))
+    mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+    mock_client.__aexit__ = AsyncMock(return_value=False)
+
+    with patch("dpyc_oracle.server.httpx.AsyncClient", return_value=mock_client):
+        url = await server_module._commit_advocate(
+            settings,
+            registry,
+            new_npub,
+            "Test Advocate",
+            [{"name": "test-svc", "url": "https://test.example.com"}],
+        )
+
+    # Individual file URL is still returned
+    assert "members/advocates/" in url
+
+    # Only the individual file PUT was made (cache PUT was skipped)
+    assert mock_client.put.call_count == 1
+
+    # Registry cache is still invalidated
+    registry.invalidate_cache.assert_called_once()

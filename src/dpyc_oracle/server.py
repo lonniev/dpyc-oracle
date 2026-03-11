@@ -244,7 +244,11 @@ async def _commit_advocate(
     """Commit a new Advocate as an individual file in members/advocates/.
 
     Same pattern as ``_commit_membership`` but writes role ``"advocate"``
-    with required service entries. Returns the commit URL.
+    with required service entries.  After writing the individual file,
+    updates ``members/read-only-lookup-cache.json`` so that the new
+    advocate is immediately discoverable via ``lookup_member()`` and
+    ``resolve_service_by_name()``.  Returns the commit URL for the
+    individual file.
     """
     token = settings.github_token
     if not token:
@@ -282,6 +286,7 @@ async def _commit_advocate(
     content_b64 = base64.b64encode(content.encode()).decode()
 
     async with httpx.AsyncClient(headers=headers, timeout=30.0) as client:
+        # 1. Write the individual advocate file
         resp = await client.put(
             f"{api}/contents/{file_path}",
             json={
@@ -290,7 +295,56 @@ async def _commit_advocate(
             },
         )
         resp.raise_for_status()
-        return resp.json()["content"]["html_url"]
+        advocate_url = resp.json()["content"]["html_url"]
+
+        # 2. Update the read-only lookup cache so the advocate is
+        #    immediately discoverable without waiting for CI.
+        cache_path = "members/read-only-lookup-cache.json"
+        try:
+            cache_resp = await client.get(f"{api}/contents/{cache_path}")
+            cache_resp.raise_for_status()
+            cache_meta = cache_resp.json()
+            cache_sha = cache_meta["sha"]
+            existing_bytes = base64.b64decode(cache_meta["content"])
+            cache_data = json.loads(existing_bytes)
+
+            cache_data.setdefault("members", []).append(new_member)
+            cache_data["updated_at"] = datetime.now(timezone.utc).strftime(
+                "%Y-%m-%dT%H:%M:%SZ"
+            )
+
+            updated_content = (
+                json.dumps(cache_data, indent=2, ensure_ascii=False) + "\n"
+            )
+            updated_b64 = base64.b64encode(updated_content.encode()).decode()
+
+            cache_put = await client.put(
+                f"{api}/contents/{cache_path}",
+                json={
+                    "message": (
+                        f"[Advocate] Update lookup cache: "
+                        f"{display_name} ({npub_short})"
+                    ),
+                    "content": updated_b64,
+                    "sha": cache_sha,
+                },
+            )
+            cache_put.raise_for_status()
+        except Exception:
+            # The individual file was committed successfully.  Log the
+            # cache-update failure but don't fail the whole operation —
+            # CI will regenerate the cache on the next push to main.
+            logger.warning(
+                "Advocate %s committed but lookup-cache update failed; "
+                "CI will rebuild the cache on next push.",
+                npub_short,
+            )
+
+        # Invalidate the in-memory registry cache so subsequent
+        # lookups fetch the freshly-updated cache from GitHub.
+        registry.invalidate_cache()
+
+        return advocate_url
 
 
 mcp = FastMCP("dpyc-oracle", instructions=INSTRUCTIONS)
