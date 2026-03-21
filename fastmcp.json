@@ -1,0 +1,12 @@
+{
+  "name": "DPYC Oracle",
+  "server": "src/dpyc_oracle/server.py",
+  "deployment": {
+    "env": {
+      "DPYC_COMMUNITY_BASE_URL": "https://raw.githubusercontent.com/lonniev/dpyc-community/main",
+      "DPYC_COMMUNITY_REPO": "lonniev/dpyc-community",
+      "CACHE_TTL_SECONDS": "300",
+      "GITHUB_TOKEN": "${GITHUB_TOKEN}"
+    }
+  }
+}
