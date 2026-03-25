@@ -1014,6 +1014,13 @@ async def register_operator(
         authority_npub: npub of the sponsoring Authority (must already
             exist as an authority or prime_authority in the registry).
     """
+    # Validate service_url is provided
+    if not service_url or not service_url.strip():
+        return {
+            "success": False,
+            "error": "service_url is required. Provide the operator's public MCP endpoint URL.",
+        }
+
     # Validate npub formats
     try:
         _validate_npub(operator_npub)
@@ -1083,6 +1090,263 @@ async def register_operator(
             f"Operator '{display_name}' ({operator_npub[:16]}...) "
             f"registered under Authority {authority_npub[:16]}... "
             f"and is now discoverable in the DPYC community."
+        ),
+    }
+
+
+async def _update_operator_file(
+    settings: OracleSettings,
+    registry: CommunityRegistry,
+    operator_npub: str,
+    updates: dict,
+) -> str:
+    """Update an existing Operator file in members/operators/.
+
+    Fetches the current file (for the SHA), merges *updates* into the
+    existing JSON, and commits the result.  Returns the commit URL.
+    """
+    token = settings.github_token
+    if not token:
+        raise RuntimeError("GitHub token not configured.")
+
+    repo = settings.dpyc_community_repo
+    api = f"https://api.github.com/repos/{repo}"
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Accept": "application/vnd.github+json",
+    }
+
+    file_path = f"members/operators/{operator_npub}.json"
+    async with httpx.AsyncClient(headers=headers, timeout=30.0) as client:
+        # Fetch current file for SHA and content
+        get_resp = await client.get(f"{api}/contents/{file_path}")
+        get_resp.raise_for_status()
+        file_data = get_resp.json()
+        existing_sha = file_data["sha"]
+        existing_content = json.loads(
+            base64.b64decode(file_data["content"]).decode()
+        )
+
+        # Merge updates
+        if "service_url" in updates:
+            for svc in existing_content.get("services", []):
+                svc["url"] = updates["service_url"]
+            if not existing_content.get("services"):
+                existing_content["services"] = [
+                    {"name": existing_content.get("display_name", operator_npub[:16]),
+                     "url": updates["service_url"],
+                     "description": "MCP Operator endpoint"}
+                ]
+        if "display_name" in updates:
+            existing_content["display_name"] = updates["display_name"]
+            for svc in existing_content.get("services", []):
+                svc["name"] = updates["display_name"]
+
+        content = json.dumps(existing_content, indent=2, ensure_ascii=False) + "\n"
+        content_b64 = base64.b64encode(content.encode()).decode()
+
+        changed = [k for k in updates if updates[k]]
+        resp = await client.put(
+            f"{api}/contents/{file_path}",
+            json={
+                "message": f"[Operator] Update {operator_npub[:16]} ({', '.join(changed)})",
+                "content": content_b64,
+                "sha": existing_sha,
+            },
+        )
+        resp.raise_for_status()
+        registry.invalidate_cache()
+        return resp.json()["content"]["html_url"]
+
+
+@mcp.tool()
+async def update_operator(
+    operator_npub: str,
+    service_url: str = "",
+    display_name: str = "",
+    authority_npub: str = "",
+) -> dict:
+    """Update an existing Operator's registry entry.
+
+    Used when an Operator moves to a new MCP endpoint, changes its
+    display name, or needs to correct a registration.  Must be called
+    by the sponsoring Authority (or any Authority).
+
+    Parameters:
+        operator_npub: Nostr npub of the Operator to update.
+        service_url: New MCP endpoint URL (leave empty to keep current).
+        display_name: New display name (leave empty to keep current).
+        authority_npub: npub of the requesting Authority (must be a
+            registered authority or prime_authority).
+    """
+    try:
+        _validate_npub(operator_npub)
+    except (ValueError, Exception) as exc:
+        return {"success": False, "error": f"Invalid operator_npub: {exc}"}
+
+    if authority_npub:
+        try:
+            _validate_npub(authority_npub)
+        except (ValueError, Exception) as exc:
+            return {"success": False, "error": f"Invalid authority_npub: {exc}"}
+
+    if not service_url and not display_name:
+        return {
+            "success": False,
+            "error": "Nothing to update. Provide service_url and/or display_name.",
+        }
+
+    settings, registry = _ensure_initialized()
+
+    # Verify Authority if provided
+    if authority_npub:
+        upstream = await registry.lookup_member(authority_npub)
+        if upstream is None or upstream.get("role") not in ("prime_authority", "authority"):
+            return {
+                "success": False,
+                "error": f"Authority {authority_npub[:16]}... not found or lacks authority role.",
+            }
+
+    # Verify operator exists
+    existing = await registry.lookup_member(operator_npub)
+    if existing is None:
+        return {
+            "success": False,
+            "error": f"Operator {operator_npub[:16]}... not found in the registry.",
+        }
+    if existing.get("role") != "operator":
+        return {
+            "success": False,
+            "error": f"Member {operator_npub[:16]}... has role '{existing.get('role')}', not 'operator'.",
+        }
+
+    updates = {}
+    if service_url:
+        updates["service_url"] = service_url
+    if display_name:
+        updates["display_name"] = display_name
+
+    try:
+        commit_url = await _update_operator_file(
+            settings, registry, operator_npub, updates
+        )
+    except Exception as exc:
+        logger.error("Failed to update operator: %s", exc)
+        return {"success": False, "error": f"Registry update failed: {exc}"}
+
+    return {
+        "success": True,
+        "status": "updated",
+        "commit_url": commit_url,
+        "message": (
+            f"Operator {operator_npub[:16]}... updated: "
+            f"{', '.join(f'{k}={v}' for k, v in updates.items())}."
+        ),
+    }
+
+
+async def _delete_operator_file(
+    settings: OracleSettings,
+    registry: CommunityRegistry,
+    operator_npub: str,
+) -> str:
+    """Delete an Operator's file from members/operators/.
+
+    Fetches the current file SHA (required by GitHub API for deletes),
+    then removes the file.  Returns the commit URL.
+    """
+    token = settings.github_token
+    if not token:
+        raise RuntimeError("GitHub token not configured.")
+
+    repo = settings.dpyc_community_repo
+    api = f"https://api.github.com/repos/{repo}"
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Accept": "application/vnd.github+json",
+    }
+
+    file_path = f"members/operators/{operator_npub}.json"
+    async with httpx.AsyncClient(headers=headers, timeout=30.0) as client:
+        get_resp = await client.get(f"{api}/contents/{file_path}")
+        get_resp.raise_for_status()
+        existing_sha = get_resp.json()["sha"]
+
+        resp = await client.request(
+            "DELETE",
+            f"{api}/contents/{file_path}",
+            json={
+                "message": f"[Operator] Remove {operator_npub[:16]} (deregistered by Authority)",
+                "sha": existing_sha,
+            },
+        )
+        resp.raise_for_status()
+        registry.invalidate_cache()
+        return resp.json()["commit"]["html_url"]
+
+
+@mcp.tool()
+async def deregister_operator(
+    operator_npub: str,
+    authority_npub: str,
+) -> dict:
+    """Remove an Operator from the DPYC community registry.
+
+    Called when an Authority disowns an Operator.  An Operator cannot
+    exist without a sponsoring Authority, so deregistration removes the
+    member file entirely, returning the Operator to initial state.
+
+    Parameters:
+        operator_npub: Nostr npub of the Operator to remove.
+        authority_npub: npub of the Authority requesting deregistration
+            (must be a registered authority or prime_authority).
+    """
+    try:
+        _validate_npub(operator_npub)
+    except (ValueError, Exception) as exc:
+        return {"success": False, "error": f"Invalid operator_npub: {exc}"}
+
+    try:
+        _validate_npub(authority_npub)
+    except (ValueError, Exception) as exc:
+        return {"success": False, "error": f"Invalid authority_npub: {exc}"}
+
+    settings, registry = _ensure_initialized()
+
+    # Verify Authority
+    upstream = await registry.lookup_member(authority_npub)
+    if upstream is None or upstream.get("role") not in ("prime_authority", "authority"):
+        return {
+            "success": False,
+            "error": f"Authority {authority_npub[:16]}... not found or lacks authority role.",
+        }
+
+    # Verify Operator exists
+    existing = await registry.lookup_member(operator_npub)
+    if existing is None:
+        return {
+            "success": False,
+            "error": f"Operator {operator_npub[:16]}... not found in the registry.",
+        }
+    if existing.get("role") != "operator":
+        return {
+            "success": False,
+            "error": f"Member {operator_npub[:16]}... has role '{existing.get('role')}', not 'operator'.",
+        }
+
+    try:
+        commit_url = await _delete_operator_file(settings, registry, operator_npub)
+    except Exception as exc:
+        logger.error("Failed to deregister operator: %s", exc)
+        return {"success": False, "error": f"Deregistration failed: {exc}"}
+
+    return {
+        "success": True,
+        "status": "deregistered",
+        "commit_url": commit_url,
+        "message": (
+            f"Operator {operator_npub[:16]}... has been removed from the "
+            f"DPYC community registry by Authority {authority_npub[:16]}..."
         ),
     }
 
