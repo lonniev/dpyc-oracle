@@ -234,6 +234,69 @@ async def _commit_authority(
         return resp.json()["content"]["html_url"]
 
 
+async def _commit_operator(
+    settings: OracleSettings,
+    registry: CommunityRegistry,
+    operator_npub: str,
+    display_name: str,
+    service_url: str,
+    authority_npub: str,
+) -> str:
+    """Commit a new Operator as an individual file in members/operators/.
+
+    Same pattern as ``_commit_authority`` but writes role ``"operator"``
+    with a service entry and the sponsoring Authority's npub.
+    Returns the commit URL.
+    """
+    token = settings.github_token
+    if not token:
+        raise RuntimeError(
+            "GitHub token not configured. Set GITHUB_TOKEN env var on "
+            "FastMCP Cloud to enable automated membership commits."
+        )
+
+    repo = settings.dpyc_community_repo
+    api = f"https://api.github.com/repos/{repo}"
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Accept": "application/vnd.github+json",
+    }
+
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    npub_short = operator_npub[:16]
+    new_member = {
+        "npub": operator_npub,
+        "role": "operator",
+        "status": "active",
+        "member_since": today,
+        "display_name": display_name,
+        "services": [
+            {
+                "name": display_name,
+                "url": service_url,
+                "description": f"MCP Operator registered under Authority {authority_npub[:16]}...",
+            },
+        ],
+        "upstream_authority_npub": authority_npub,
+        "notes": "Registered via Authority-mediated operator registration protocol",
+    }
+
+    file_path = f"members/operators/{operator_npub}.json"
+    content = json.dumps(new_member, indent=2, ensure_ascii=False) + "\n"
+    content_b64 = base64.b64encode(content.encode()).decode()
+
+    async with httpx.AsyncClient(headers=headers, timeout=30.0) as client:
+        resp = await client.put(
+            f"{api}/contents/{file_path}",
+            json={
+                "message": f"[Operator] Add {display_name} ({npub_short})",
+                "content": content_b64,
+            },
+        )
+        resp.raise_for_status()
+        return resp.json()["content"]["html_url"]
+
+
 async def _commit_advocate(
     settings: OracleSettings,
     registry: CommunityRegistry,
@@ -924,6 +987,102 @@ async def register_authority(
             f"Authority '{display_name}' ({authority_npub[:16]}...) "
             f"registered under upstream {upstream_authority_npub[:16]}... "
             f"and is now discoverable by Operators."
+        ),
+    }
+
+
+# --- Operator registration (Authority-mediated) ---
+
+
+@mcp.tool()
+async def register_operator(
+    operator_npub: str,
+    display_name: str,
+    service_url: str,
+    authority_npub: str,
+) -> dict:
+    """Register a new Operator in the DPYC community registry.
+
+    Called by an Authority service after the operator requests registration.
+    The Authority validates the operator's identity and sponsors the
+    registration by calling this tool via MCP-to-MCP.
+
+    Parameters:
+        operator_npub: Nostr npub of the new Operator.
+        display_name: Human-readable name for the Operator service.
+        service_url: Public MCP endpoint URL of the Operator service.
+        authority_npub: npub of the sponsoring Authority (must already
+            exist as an authority or prime_authority in the registry).
+    """
+    # Validate npub formats
+    try:
+        _validate_npub(operator_npub)
+    except (ValueError, Exception) as exc:
+        return {"success": False, "error": f"Invalid operator_npub: {exc}"}
+
+    try:
+        _validate_npub(authority_npub)
+    except (ValueError, Exception) as exc:
+        return {"success": False, "error": f"Invalid authority_npub: {exc}"}
+
+    settings, registry = _ensure_initialized()
+
+    # Verify sponsoring Authority exists and has appropriate role
+    upstream = await registry.lookup_member(authority_npub)
+    if upstream is None:
+        return {
+            "success": False,
+            "error": (
+                f"Sponsoring authority {authority_npub[:16]}... "
+                "not found in the registry."
+            ),
+        }
+    if upstream.get("role") not in ("prime_authority", "authority"):
+        return {
+            "success": False,
+            "error": (
+                f"Sponsoring member {authority_npub[:16]}... has role "
+                f"'{upstream.get('role')}', not 'authority' or 'prime_authority'."
+            ),
+        }
+
+    # Check if operator_npub is already registered
+    existing = await registry.lookup_member(operator_npub)
+    if existing is not None:
+        return {
+            "success": False,
+            "error": (
+                f"npub {operator_npub[:16]}... is already registered "
+                f"with role '{existing.get('role')}'."
+            ),
+        }
+
+    # Commit to GitHub
+    try:
+        registry.invalidate_cache()
+        commit_url = await _commit_operator(
+            settings,
+            registry,
+            operator_npub,
+            display_name,
+            service_url,
+            authority_npub,
+        )
+    except Exception as exc:
+        logger.error("Failed to commit operator membership: %s", exc)
+        return {
+            "success": False,
+            "error": f"Registry commit failed: {exc}",
+        }
+
+    return {
+        "success": True,
+        "status": "registered",
+        "commit_url": commit_url,
+        "message": (
+            f"Operator '{display_name}' ({operator_npub[:16]}...) "
+            f"registered under Authority {authority_npub[:16]}... "
+            f"and is now discoverable in the DPYC community."
         ),
     }
 
