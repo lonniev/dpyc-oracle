@@ -1634,7 +1634,7 @@ async def publish_campaign(
         campaign_json: The full campaign export as a JSON string.
         campaign_name: Optional display name. Derived from JSON if omitted.
     """
-    settings = _get_settings()
+    settings, _ = _ensure_initialized()
     try:
         campaign = json.loads(campaign_json)
     except json.JSONDecodeError as e:
@@ -1694,7 +1694,7 @@ async def list_campaigns(
         operator_npub: Filter to campaigns for this operator (optional).
         author_npub: Filter to campaigns by this author (optional).
     """
-    settings = _get_settings()
+    settings, _ = _ensure_initialized()
     token = settings.github_token
     repo = settings.dpyc_community_repo
     api = f"https://api.github.com/repos/{repo}"
@@ -1771,7 +1771,7 @@ async def get_campaign(
         slug: The campaign slug (directory name).
         format: "json" for importable data, "markdown" for readable summary.
     """
-    settings = _get_settings()
+    settings, _ = _ensure_initialized()
     token = settings.github_token
     repo = settings.dpyc_community_repo
     api = f"https://api.github.com/repos/{repo}"
