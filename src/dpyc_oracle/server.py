@@ -1622,6 +1622,7 @@ async def publish_campaign(
     operator_npub: str,
     campaign_json: str,
     campaign_name: str = "",
+    campaign_markdown: str = "",
 ) -> dict:
     """Publish a pricing campaign to the DPYC community.
 
@@ -1633,6 +1634,8 @@ async def publish_campaign(
         operator_npub: The npub of the operator the campaign is for.
         campaign_json: The full campaign export as a JSON string.
         campaign_name: Optional display name. Derived from JSON if omitted.
+        campaign_markdown: Optional pre-rendered Markdown. If omitted, the
+            Oracle generates a basic summary from the JSON.
     """
     settings, _ = _ensure_initialized()
     try:
@@ -1648,7 +1651,7 @@ async def publish_campaign(
 
     # Format JSON nicely
     json_content = json.dumps(campaign, indent=2, ensure_ascii=False) + "\n"
-    md_content = _render_campaign_markdown(campaign)
+    md_content = campaign_markdown if campaign_markdown else _render_campaign_markdown(campaign)
 
     try:
         json_url = await _commit_campaign_file(
