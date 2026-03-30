@@ -1508,5 +1508,309 @@ async def cast_ban_vote(election_id: str, vote: str, npub: str) -> dict:
     }
 
 
+# ── Campaign sharing ──────────────────────────────────────────────────
+
+
+def _campaign_slug(name: str) -> str:
+    """Convert a campaign name to a URL-safe directory slug."""
+    import re
+    slug = name.lower().strip()
+    slug = re.sub(r"[^a-z0-9]+", "-", slug)
+    slug = slug.strip("-")
+    return slug or "untitled"
+
+
+def _render_campaign_markdown(campaign: dict) -> str:
+    """Render a campaign dict as a human-readable Markdown summary."""
+    name = campaign.get("name", "Untitled Campaign")
+    operator_name = campaign.get("operator_display_name", "Unknown")
+    operator_npub = campaign.get("operator_npub", "")
+    created = campaign.get("created_at", "")
+
+    md = f"# {name}\n\n"
+    md += f"**Operator:** {operator_name}\n"
+    if created:
+        md += f"**Created:** {created}\n"
+    if operator_npub:
+        md += f"**Operator npub:** `{operator_npub[:24]}...`\n"
+    md += "\n---\n\n"
+
+    proposal = campaign.get("proposal", {})
+
+    # Tool prices
+    tools = proposal.get("tool_prices") or proposal.get("toolPrices") or []
+    if tools:
+        md += "## Tool Prices\n\n"
+        md += "| Tool | Price (sats) | Category |\n"
+        md += "|------|-------------|----------|\n"
+        for t in tools:
+            name_key = t.get("tool_name") or t.get("toolName", "?")
+            price = t.get("price_sats") or t.get("priceSats", 0)
+            cat = t.get("category", "")
+            md += f"| {name_key} | {price} | {cat} |\n"
+        md += "\n"
+
+    # Pipeline
+    pipeline = proposal.get("pipeline") or []
+    if pipeline:
+        md += "## Constraint Pipeline\n\n"
+        for i, step in enumerate(pipeline):
+            md += f"**Step {i + 1}: {step.get('type', '?')}**\n"
+            params = step.get("params", {})
+            for k, v in sorted(params.items()):
+                md += f"- {k}: {v}\n"
+            md += "\n"
+
+    # Projections
+    proj = (proposal.get("projections")
+            or campaign.get("revenue_projections") or {})
+    if proj:
+        md += "## Revenue Projections\n\n"
+        for k, v in sorted(proj.items()):
+            md += f"- {k}: {v}\n"
+        md += "\n"
+
+    md += "---\n\n"
+    md += ("*Published via the [DPYC Oracle]"
+           "(https://github.com/lonniev/dpyc-oracle) from "
+           "[Pricing Studio]"
+           "(https://github.com/lonniev/tollbooth-pricing-studio).*\n")
+    return md
+
+
+async def _commit_campaign_file(
+    settings: OracleSettings,
+    file_path: str,
+    content: str,
+    message: str,
+) -> str:
+    """Commit a single file to dpyc-community via GitHub API."""
+    token = settings.github_token
+    if not token:
+        raise RuntimeError("GitHub token not configured.")
+
+    repo = settings.dpyc_community_repo
+    api = f"https://api.github.com/repos/{repo}"
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Accept": "application/vnd.github+json",
+    }
+
+    content_b64 = base64.b64encode(content.encode()).decode()
+
+    async with httpx.AsyncClient(headers=headers, timeout=30.0) as client:
+        # Check if file exists (need SHA for updates)
+        existing = await client.get(f"{api}/contents/{file_path}")
+        body: dict = {
+            "message": message,
+            "content": content_b64,
+        }
+        if existing.status_code == 200:
+            body["sha"] = existing.json()["sha"]
+
+        resp = await client.put(
+            f"{api}/contents/{file_path}",
+            json=body,
+        )
+        resp.raise_for_status()
+        return resp.json()["content"]["html_url"]
+
+
+@mcp.tool()
+async def publish_campaign(
+    author_npub: str,
+    operator_npub: str,
+    campaign_json: str,
+    campaign_name: str = "",
+) -> dict:
+    """Publish a pricing campaign to the DPYC community.
+
+    Commits both a machine-importable JSON file and a human-readable
+    Markdown summary to the dpyc-community campaigns directory.
+
+    Args:
+        author_npub: The npub of the person who designed the campaign.
+        operator_npub: The npub of the operator the campaign is for.
+        campaign_json: The full campaign export as a JSON string.
+        campaign_name: Optional display name. Derived from JSON if omitted.
+    """
+    settings = _get_settings()
+    try:
+        campaign = json.loads(campaign_json)
+    except json.JSONDecodeError as e:
+        return {"success": False, "error": f"Invalid JSON: {e}"}
+
+    name = campaign_name or campaign.get("name", "Untitled")
+    slug = _campaign_slug(name)
+    campaign["name"] = name
+
+    base_path = f"campaigns/{author_npub}/{operator_npub}/{slug}"
+
+    # Format JSON nicely
+    json_content = json.dumps(campaign, indent=2, ensure_ascii=False) + "\n"
+    md_content = _render_campaign_markdown(campaign)
+
+    try:
+        json_url = await _commit_campaign_file(
+            settings,
+            f"{base_path}/campaign.json",
+            json_content,
+            f"[Campaign] {name} — {slug} (JSON)",
+        )
+        md_url = await _commit_campaign_file(
+            settings,
+            f"{base_path}/campaign.md",
+            md_content,
+            f"[Campaign] {name} — {slug} (Markdown)",
+        )
+    except Exception as e:
+        return {"success": False, "error": f"Commit failed: {e}"}
+
+    return {
+        "success": True,
+        "campaign_name": name,
+        "slug": slug,
+        "author_npub": author_npub,
+        "operator_npub": operator_npub,
+        "json_url": json_url,
+        "markdown_url": md_url,
+        "message": (
+            f"Campaign '{name}' published to dpyc-community. "
+            f"JSON: {json_url}"
+        ),
+    }
+
+
+@mcp.tool()
+async def list_campaigns(
+    operator_npub: str = "",
+    author_npub: str = "",
+) -> dict:
+    """List published pricing campaigns from the DPYC community.
+
+    Optionally filter by operator or author npub.
+
+    Args:
+        operator_npub: Filter to campaigns for this operator (optional).
+        author_npub: Filter to campaigns by this author (optional).
+    """
+    settings = _get_settings()
+    token = settings.github_token
+    repo = settings.dpyc_community_repo
+    api = f"https://api.github.com/repos/{repo}"
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Accept": "application/vnd.github+json",
+    } if token else {"Accept": "application/vnd.github+json"}
+
+    campaigns = []
+    try:
+        async with httpx.AsyncClient(headers=headers, timeout=30.0) as client:
+            # List author directories
+            resp = await client.get(f"{api}/contents/campaigns")
+            if resp.status_code != 200:
+                return {"success": True, "campaigns": [], "count": 0}
+
+            authors = [
+                item for item in resp.json()
+                if item["type"] == "dir" and item["name"].startswith("npub1")
+            ]
+
+            for author_dir in authors:
+                a_npub = author_dir["name"]
+                if author_npub and a_npub != author_npub:
+                    continue
+
+                # List operator directories under this author
+                resp2 = await client.get(f"{api}/contents/campaigns/{a_npub}")
+                if resp2.status_code != 200:
+                    continue
+
+                for op_dir in resp2.json():
+                    if op_dir["type"] != "dir" or not op_dir["name"].startswith("npub1"):
+                        continue
+                    o_npub = op_dir["name"]
+                    if operator_npub and o_npub != operator_npub:
+                        continue
+
+                    # List campaign directories
+                    resp3 = await client.get(
+                        f"{api}/contents/campaigns/{a_npub}/{o_npub}"
+                    )
+                    if resp3.status_code != 200:
+                        continue
+
+                    for camp_dir in resp3.json():
+                        if camp_dir["type"] != "dir":
+                            continue
+                        campaigns.append({
+                            "slug": camp_dir["name"],
+                            "author_npub": a_npub,
+                            "operator_npub": o_npub,
+                            "path": f"campaigns/{a_npub}/{o_npub}/{camp_dir['name']}",
+                        })
+
+    except Exception as e:
+        return {"success": False, "error": f"Failed to list campaigns: {e}"}
+
+    return {"success": True, "campaigns": campaigns, "count": len(campaigns)}
+
+
+@mcp.tool()
+async def get_campaign(
+    author_npub: str,
+    operator_npub: str,
+    slug: str,
+    format: str = "json",
+) -> dict:
+    """Retrieve a published pricing campaign.
+
+    Args:
+        author_npub: The campaign author's npub.
+        operator_npub: The target operator's npub.
+        slug: The campaign slug (directory name).
+        format: "json" for importable data, "markdown" for readable summary.
+    """
+    settings = _get_settings()
+    token = settings.github_token
+    repo = settings.dpyc_community_repo
+    api = f"https://api.github.com/repos/{repo}"
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Accept": "application/vnd.github+json",
+    } if token else {"Accept": "application/vnd.github+json"}
+
+    ext = "md" if format == "markdown" else "json"
+    file_path = f"campaigns/{author_npub}/{operator_npub}/{slug}/campaign.{ext}"
+
+    try:
+        async with httpx.AsyncClient(headers=headers, timeout=30.0) as client:
+            resp = await client.get(f"{api}/contents/{file_path}")
+            if resp.status_code == 404:
+                return {
+                    "success": False,
+                    "error": f"Campaign not found: {slug}",
+                }
+            resp.raise_for_status()
+            content_b64 = resp.json()["content"]
+            content = base64.b64decode(content_b64).decode()
+
+            if format == "json":
+                return {
+                    "success": True,
+                    "campaign": json.loads(content),
+                    "slug": slug,
+                }
+            else:
+                return {
+                    "success": True,
+                    "markdown": content,
+                    "slug": slug,
+                }
+
+    except Exception as e:
+        return {"success": False, "error": f"Failed to retrieve campaign: {e}"}
+
+
 if __name__ == "__main__":
     mcp.run()
