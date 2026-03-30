@@ -341,7 +341,7 @@ wheels = [
 
 [[package]]
 name = "dpyc-oracle"
-version = "0.2.7"
+version = "0.2.9"
 source = { editable = "." }
 dependencies = [
     { name = "fastmcp" },

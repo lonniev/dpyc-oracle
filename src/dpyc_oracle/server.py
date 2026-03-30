@@ -28,6 +28,7 @@ ECOSYSTEM_LINKS = {
     "excalibur_mcp": "https://github.com/lonniev/excalibur-mcp",
     "dpyc_oracle": "https://github.com/lonniev/dpyc-oracle",
     "tollbooth_sample": "https://github.com/lonniev/tollbooth-sample",
+    "tollbooth_shortlinks": "https://github.com/lonniev/tollbooth-shortlinks",
     "dpyc_oracle_mcp": "https://dpyc-oracle.fastmcp.app/mcp",
 }
 
@@ -70,6 +71,7 @@ Related repos:
 - tollbooth-dpyc: https://github.com/lonniev/tollbooth-dpyc (Python SDK for Tollbooth monetization)
 - tollbooth-authority: https://github.com/lonniev/tollbooth-authority (Authority MCP service)
 - thebrain-mcp: https://github.com/lonniev/thebrain-mcp (Personal Brain MCP service)
+- tollbooth-shortlinks: https://github.com/lonniev/tollbooth-shortlinks (ephemeral short URLs for OAuth flows)
 """
 
 _settings: OracleSettings | None = None

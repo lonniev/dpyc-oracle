@@ -76,6 +76,7 @@ This service is hosted on [FastMCP Cloud](https://www.fastmcp.com). Add it to yo
 - [tollbooth-dpyc](https://github.com/lonniev/tollbooth-dpyc) — Python SDK for Tollbooth monetization
 - [tollbooth-authority](https://github.com/lonniev/tollbooth-authority) — Authority MCP service for purchase certification
 - [thebrain-mcp](https://github.com/lonniev/thebrain-mcp) — Personal Brain MCP service
+- [tollbooth-shortlinks](https://github.com/lonniev/tollbooth-shortlinks) — Ephemeral short URLs for OAuth flows
 
 ## License
 
