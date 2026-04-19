@@ -1,6 +1,6 @@
 # DPYC Oracle
 
-A free, unauthenticated MCP concierge service for the [DPYC Honor Chain](https://github.com/lonniev/dpyc-community). The Oracle answers questions about membership, governance, onboarding, and tax rates by reading the community registry on GitHub. No payment or credentials required.
+A free, unauthenticated MCP concierge service for the [DPYC Honor Chain](https://github.com/lonniev/dpyc-community). The Oracle answers questions about membership, governance, onboarding, and tax rates by reading the [dpyc-community GitHub registry](https://github.com/lonniev/dpyc-community) live. No credits, no Neon database, no Secure Courier, no payment or credentials required.
 
 ## Available Tools
 
@@ -73,7 +73,7 @@ This service is hosted on [FastMCP Cloud](https://www.fastmcp.com). Add it to yo
 ## Related Repos
 
 - [dpyc-community](https://github.com/lonniev/dpyc-community) — Registry, governance, and membership data
-- [tollbooth-dpyc](https://github.com/lonniev/tollbooth-dpyc) — Python SDK for Tollbooth monetization
+- [tollbooth-dpyc](https://github.com/lonniev/tollbooth-dpyc) — Python SDK for Tollbooth monetization (v0.13.5)
 - [tollbooth-authority](https://github.com/lonniev/tollbooth-authority) — Authority MCP service for purchase certification
 - [thebrain-mcp](https://github.com/lonniev/thebrain-mcp) — Personal Brain MCP service
 - [tollbooth-shortlinks](https://github.com/lonniev/tollbooth-shortlinks) — Ephemeral short URLs for OAuth flows
