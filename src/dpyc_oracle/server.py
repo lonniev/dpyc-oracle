@@ -668,6 +668,21 @@ async def network_advisory() -> str:
 
 
 @mcp.tool()
+async def how_to_add_authority() -> str:
+    """End-to-end guide for spinning up a new Tollbooth Authority.
+
+    Returns the eight-step procedure covering identity, region selection,
+    GitHub workspace, dpyc-community registry entry, Neon + BTCPay + Horizon
+    deployment, BTCPay credential delivery via Secure Courier, the
+    self-registration challenge-response with the parent Authority, and
+    pre-funding the cert-fee balance. Fetched live from docs/how-to-add-authority.md
+    in the dpyc-community repo.
+    """
+    _, registry = _ensure_initialized()
+    return await registry.get_text("docs/how-to-add-authority.md")
+
+
+@mcp.tool()
 async def service_status() -> dict:
     """Diagnostic: report this service's software versions and runtime info.
 
