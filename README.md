@@ -72,10 +72,28 @@ This service is hosted on [FastMCP Cloud](https://www.fastmcp.com). Add it to yo
 
 ## Related Repos
 
+The authoritative, always-current roster lives in the registry — call `lookup_member()` / `network_versions()` for live data. The stable source repos:
+
+**Core**
 - [dpyc-community](https://github.com/lonniev/dpyc-community) — Registry, governance, and membership data
-- [tollbooth-dpyc](https://github.com/lonniev/tollbooth-dpyc) — Python SDK for Tollbooth monetization (v0.13.5)
-- [tollbooth-authority](https://github.com/lonniev/tollbooth-authority) — Authority MCP service for purchase certification
-- [thebrain-mcp](https://github.com/lonniev/thebrain-mcp) — Personal Brain MCP service
+- [tollbooth-dpyc](https://github.com/lonniev/tollbooth-dpyc) — Python SDK every Operator and Authority builds on
+- [tollbooth-sample](https://github.com/lonniev/tollbooth-sample) — Reference Operator template for new services
+- [tollbooth-pricing-studio](https://github.com/lonniev/tollbooth-pricing-studio) — iOS app Operators use to design pricing models
+
+**Authorities** (certification chain)
+- [tollbooth-authority](https://github.com/lonniev/tollbooth-authority) — Certification + fee ledger
+- [tollbooth-authority-northamerica](https://github.com/lonniev/tollbooth-authority-northamerica) — Regional certifier
+- [tollbooth-authority-newengland](https://github.com/lonniev/tollbooth-authority-newengland) — Sub-regional certifier
+
+**Operators**
+- [thebrain-mcp](https://github.com/lonniev/thebrain-mcp) — Personal Brain knowledge graph
+- [excalibur-mcp](https://github.com/lonniev/excalibur-mcp) — X/Twitter posting
+- [schwab-mcp](https://github.com/lonniev/schwab-mcp) — Charles Schwab brokerage data
+- [taxsort-mcp](https://github.com/lonniev/taxsort-mcp) — Tax sorting + classification
+- [optionality-mcp](https://github.com/lonniev/optionality-mcp) — Options analytics
+
+**Advocates** (shared utilities, unmonetized)
+- [tollbooth-oauth2-collector](https://github.com/lonniev/tollbooth-oauth2-collector) — OAuth2 authorization-code collection
 - [tollbooth-shortlinks](https://github.com/lonniev/tollbooth-shortlinks) — Ephemeral short URLs for OAuth flows
 
 ## License
