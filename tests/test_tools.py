@@ -188,7 +188,7 @@ async def test_who_is_first_curator(mock_registry):
 @pytest.mark.asyncio
 async def test_about(mock_registry):
     result = await server_module.about()
-    assert "# About the DPYC Honor Chain" in result
+    assert "# About the DPYC Social Contract" in result
     assert "# Governance" in result
     assert "DPYC Community" in result
 

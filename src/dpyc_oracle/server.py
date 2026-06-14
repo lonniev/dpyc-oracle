@@ -49,7 +49,7 @@ ECOSYSTEM_LINKS = {
 }
 
 INSTRUCTIONS = """\
-DPYC Oracle — community concierge for the DPYC Honor Chain.
+DPYC Oracle — community concierge for the DPYC Social Contract.
 
 DPYC ("Don't Pester Your Customer") is a philosophy and protocol for API \
 monetization via Bitcoin Lightning micropayments. Users pre-fund a satoshi \
@@ -59,7 +59,7 @@ username. Tollbooth monetizes complete business information at the MCP tool \
 layer — not raw REST data fragments — using pre-funded Lightning balances \
 that eliminate per-request payment ceremonies.
 
-The Honor Chain is a voluntary community of Operators and Authorities who \
+The DPYC Social Contract is a community of Operators and Authorities who \
 agree to transparent, auditable economic rules. Operators run MCP services \
 and collect Lightning fares via Tollbooths. Authorities certify Operators \
 and collect a small tax on every purchase order. The First Curator (Prime \
@@ -438,7 +438,7 @@ mcp = FastMCP("dpyc-oracle", instructions=INSTRUCTIONS)
 
 @mcp.tool()
 async def about() -> str:
-    """Extended narration about DPYC, the Honor Chain, and the Oracle.
+    """Extended narration about DPYC, the Social Contract, and the Oracle.
 
     Fetches README.md and GOVERNANCE.md from the dpyc-community repo and
     assembles a comprehensive context answer.
@@ -450,7 +450,7 @@ async def about() -> str:
         f"- **{name}**: {url}" for name, url in ECOSYSTEM_LINKS.items()
     )
     return (
-        "# About the DPYC Honor Chain\n\n"
+        "# About the DPYC Social Contract\n\n"
         f"{readme}\n\n"
         "---\n\n"
         "# Governance\n\n"
@@ -494,7 +494,7 @@ async def get_tax_rate() -> dict:
 
 @mcp.tool()
 async def economic_model() -> dict:
-    """Get the DPYC Honor Chain economic model summary and diagram.
+    """Get the DPYC Social Contract economic model summary and diagram.
 
     Returns the network topology, fee structure, cascade effects, and
     weekly revenue projections for a 5-Authority network at scale.
@@ -561,7 +561,7 @@ async def economic_model() -> dict:
 
 @mcp.tool()
 async def get_rulebook() -> str:
-    """Fetch the DPYC Honor Chain governance document.
+    """Fetch the DPYC Social Contract governance document.
 
     Returns the raw markdown of GOVERNANCE.md from the dpyc-community repo.
     """
@@ -571,14 +571,14 @@ async def get_rulebook() -> str:
 
 @mcp.tool()
 async def how_to_join() -> str:
-    """Tier-specific onboarding guide for joining the DPYC Honor Chain.
+    """Tier-specific onboarding guide for joining the DPYC Social Contract.
 
     Covers all five tiers: Citizen, Advocate, Operator, Authority, and
     First Curator. Includes Nostr keygen instructions and practical next
     steps.
     """
     return """\
-# How to Join the DPYC Honor Chain
+# How to Join the DPYC Social Contract
 
 ## Step 1 — Generate a Nostr Identity
 
@@ -631,7 +631,7 @@ nak key generate    # prints nsec (private) and npub (public)
 7. Call `check_authority_approval(your_npub)` — on success, your Authority is registered in the community and discoverable by Operators
 
 ### First Curator (Prime Authority)
-- There is exactly one First Curator at the root of the Honor Chain
+- There is exactly one First Curator at the root of the Certification Chain
 - This role is not open for application — it is a governance position
 
 ## Step 3 — Get Sponsored
@@ -639,7 +639,7 @@ nak key generate    # prints nsec (private) and npub (public)
 1. Introduce yourself in the community (GitHub Issues on dpyc-community)
 2. An Authority reviews your intent and submits a PR with your member record
 3. CI validates the record format; community reviews the PR
-4. Once merged, you are an official member of the Honor Chain
+4. Once merged, you are an official member of the DPYC Social Contract
 
 ## Useful Links
 
@@ -653,7 +653,7 @@ nak key generate    # prints nsec (private) and npub (public)
 
 @mcp.tool()
 async def who_is_first_curator() -> dict | str:
-    """Identify the First Curator (Prime Authority) of the Honor Chain.
+    """Identify the First Curator (Prime Authority) of the Certification Chain.
 
     Returns the curator's npub, display name, and member record.
     """
@@ -920,7 +920,7 @@ async def confirm_citizenship(
         "status": "admitted",
         "commit_url": commit_url,
         "message": (
-            f"Welcome to the DPYC Honor Chain, {challenge['display_name']}! "
+            f"Welcome to the DPYC Social Contract, {challenge['display_name']}! "
             f"Your membership has been registered. You are now a Citizen."
         ),
     }
@@ -1475,7 +1475,7 @@ async def register_advocate(
 
 @mcp.tool()
 async def check_ban_status(npub: str) -> dict:
-    """Check whether an npub is banned from the Honor Chain.
+    """Check whether an npub is banned from the DPYC Social Contract.
 
     Looks up the member in the community registry and checks whether
     their status is "banned".  Unknown npubs are not considered banned
@@ -1507,7 +1507,7 @@ async def check_ban_status(npub: str) -> dict:
 
 @mcp.tool()
 async def renounce_membership(npub: str) -> dict:
-    """Citizen self-removal from the Honor Chain via automated PR.
+    """Citizen self-removal from the DPYC Social Contract via automated PR.
 
     Not yet implemented — will create a GitHub PR to remove the member
     from the registry.

@@ -1,6 +1,6 @@
 # DPYC Oracle
 
-A free, unauthenticated MCP concierge service for the [DPYC Honor Chain](https://github.com/lonniev/dpyc-community). The Oracle answers questions about membership, governance, onboarding, and tax rates by reading the [dpyc-community GitHub registry](https://github.com/lonniev/dpyc-community) live. No credits, no Neon database, no Secure Courier, no payment or credentials required.
+A free, unauthenticated MCP concierge service for the [DPYC Social Contract](https://github.com/lonniev/dpyc-community). The Oracle answers questions about membership, governance, onboarding, and tax rates by reading the [dpyc-community GitHub registry](https://github.com/lonniev/dpyc-community) live. No credits, no Neon database, no Secure Courier, no payment or credentials required.
 
 ## Available Tools
 
