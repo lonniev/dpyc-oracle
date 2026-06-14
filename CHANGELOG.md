@@ -3,6 +3,20 @@
 All notable changes to this project will be documented in this file.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.2.11] — 2026-06-14
+
+- ecosystem: complete `ECOSYSTEM_LINKS` to the full current network — all three Authorities (Prime, North America, New England), all Operators (thebrain, excalibur, schwab, taxsort, optionality), both Advocates (oauth2-collector, shortlinks), the SDK, the sample, and tollbooth-pricing-studio
+- ecosystem: rewrite the server `INSTRUCTIONS` "Related repos" block to give canonical entry points and defer the live/full roster to `about()` / `lookup_member()` / `network_versions()`, so the description can't drift out of date
+- chore: sync `__version__` (was stuck at 0.2.6) with `pyproject.toml`
+- docs: refresh README related-repos list; drop the stale pinned SDK version annotation
+
+## [0.2.10] — 2026-06-14
+
+- feat: campaign tools — `publish_campaign`, `list_campaigns`, `get_campaign` (GitHub-backed CRUD); accept pre-rendered `campaign_markdown`
+- feat: operator CRUD — `register_operator`, `update_operator`, `deregister_operator` (Authority-mediated) with `service_url` validation
+- feat: `how_to_add_authority` tool — fetches the community guide from dpyc-community
+- chore: add ruff lint step to CI
+
 ## [0.2.8] — 2026-03-21
 
 - chore: add fastmcp.json for Horizon deployment config

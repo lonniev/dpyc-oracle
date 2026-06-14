@@ -20,15 +20,31 @@ from dpyc_oracle.registry import CommunityRegistry
 
 logger = logging.getLogger(__name__)
 
+# Canonical ecosystem repos. The authoritative, always-current member roster
+# lives in the dpyc-community registry — call lookup_member()/network_versions()
+# for live data. This list is the stable set of source repos people link to.
 ECOSYSTEM_LINKS = {
+    # Core
     "dpyc_community": "https://github.com/lonniev/dpyc-community",
     "tollbooth_dpyc": "https://github.com/lonniev/tollbooth-dpyc",
-    "tollbooth_authority": "https://github.com/lonniev/tollbooth-authority",
-    "thebrain_mcp": "https://github.com/lonniev/thebrain-mcp",
-    "excalibur_mcp": "https://github.com/lonniev/excalibur-mcp",
     "dpyc_oracle": "https://github.com/lonniev/dpyc-oracle",
     "tollbooth_sample": "https://github.com/lonniev/tollbooth-sample",
+    # Authorities (certification chain)
+    "tollbooth_authority": "https://github.com/lonniev/tollbooth-authority",
+    "tollbooth_authority_northamerica": "https://github.com/lonniev/tollbooth-authority-northamerica",
+    "tollbooth_authority_newengland": "https://github.com/lonniev/tollbooth-authority-newengland",
+    # Operators
+    "thebrain_mcp": "https://github.com/lonniev/thebrain-mcp",
+    "excalibur_mcp": "https://github.com/lonniev/excalibur-mcp",
+    "schwab_mcp": "https://github.com/lonniev/schwab-mcp",
+    "taxsort_mcp": "https://github.com/lonniev/taxsort-mcp",
+    "optionality_mcp": "https://github.com/lonniev/optionality-mcp",
+    # Advocates (shared utilities, unmonetized)
+    "tollbooth_oauth2_collector": "https://github.com/lonniev/tollbooth-oauth2-collector",
     "tollbooth_shortlinks": "https://github.com/lonniev/tollbooth-shortlinks",
+    # Pricing app (operator pricing-model editor)
+    "tollbooth_pricing_studio": "https://github.com/lonniev/tollbooth-pricing-studio",
+    # Oracle MCP endpoint
     "dpyc_oracle_mcp": "https://dpyc-oracle.fastmcp.app/mcp",
 }
 
@@ -66,12 +82,17 @@ about membership, governance, onboarding, and tax rates by reading the \
 dpyc-community registry on GitHub. It does not require payment or \
 credentials.
 
-Related repos:
-- dpyc-community: https://github.com/lonniev/dpyc-community (registry + governance)
-- tollbooth-dpyc: https://github.com/lonniev/tollbooth-dpyc (Python SDK for Tollbooth monetization)
-- tollbooth-authority: https://github.com/lonniev/tollbooth-authority (Authority MCP service)
-- thebrain-mcp: https://github.com/lonniev/thebrain-mcp (Personal Brain MCP service)
-- tollbooth-shortlinks: https://github.com/lonniev/tollbooth-shortlinks (ephemeral short URLs for OAuth flows)
+The live ecosystem is read from the dpyc-community registry — never guess at
+the roster. Call about() for the full set of ecosystem links, lookup_member()
+to resolve any npub, list_canonical_identities via a member service for tool
+identities, and network_versions() for current component versions.
+
+Canonical entry points:
+- dpyc-community: https://github.com/lonniev/dpyc-community (registry + governance — the authoritative member list)
+- tollbooth-dpyc: https://github.com/lonniev/tollbooth-dpyc (Python SDK every operator and Authority builds on)
+- tollbooth-authority: https://github.com/lonniev/tollbooth-authority (Authority MCP — certification + fee ledger)
+- tollbooth-sample: https://github.com/lonniev/tollbooth-sample (reference Operator template for new services)
+- tollbooth-pricing-studio: https://github.com/lonniev/tollbooth-pricing-studio (iOS app operators use to design pricing models)
 """
 
 _settings: OracleSettings | None = None
