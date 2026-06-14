@@ -3,6 +3,10 @@
 All notable changes to this project will be documented in this file.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.2.12] — 2026-06-14
+
+- voice: replace "Honor Chain" branding throughout the Oracle's user-facing strings, server instructions, README, and package description. The community/agreement is the **DPYC Social Contract**; the authority cascade is the **Certification Chain** (First Curator at its root). Aligns the Oracle — the canonical description other agents read — with the project's preferred voice.
+
 ## [0.2.11] — 2026-06-14
 
 - ecosystem: complete `ECOSYSTEM_LINKS` to the full current network — all three Authorities (Prime, North America, New England), all Operators (thebrain, excalibur, schwab, taxsort, optionality), both Advocates (oauth2-collector, shortlinks), the SDK, the sample, and tollbooth-pricing-studio
