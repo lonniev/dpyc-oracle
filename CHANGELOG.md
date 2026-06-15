@@ -3,6 +3,10 @@
 All notable changes to this project will be documented in this file.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.2.14] — 2026-06-15
+
+- clarity: `list_services` renames the probe's `server_version` field to `framework_version`. The value is `serverInfo.version`, which for DPYC services is the FastMCP framework version (they don't override it) — not the operator's package release. The new name settles that ambiguity; use `network_versions()` for component release versions. Verified live against the deployed Oracle: 11/13 endpoints handshook clean, the 2 non-MCP OAuth advocate URLs degraded gracefully to `unreachable`.
+
 ## [0.2.13] — 2026-06-15
 
 - de-hardcode: `get_tax_rate` no longer fabricates a network-wide `2% / 10 sat` figure. Taxation is ad valorem and **per-Authority** — the tool now explains the model and redirects to the relevant Authority's `check_price` for the live rate. The Oracle, a free docent, quotes no rate it has no authority over. (The certification fee is computed by the SDK's `paid_tool` decorator from each Authority's own pricing model; the Oracle was never in that money path.)
