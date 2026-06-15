@@ -1,0 +1,17 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["config:recommended"],
+  "labels": ["dependencies"],
+  "enabledManagers": ["github-actions"],
+  "packageRules": [
+    {
+      "description": "Auto-merge GitHub Actions minor/patch bumps",
+      "matchManagers": ["github-actions"],
+      "matchUpdateTypes": ["minor", "patch"],
+      "automerge": true,
+      "automergeType": "pr",
+      "automergeStrategy": "squash"
+    }
+  ],
+  "_comment": "Oracle is NOT a tollbooth-dpyc wheel consumer, so the fleet's SDK-propagation preset doesn't apply. Python deps (fastmcp, nostr-sdk) are bumped by hand with `uv lock` regen because Horizon builds from uv.lock — a pyproject-only bump wouldn't reach the deploy. Renovate here keeps only GitHub Actions current."
+}
