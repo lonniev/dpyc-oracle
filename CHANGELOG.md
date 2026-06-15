@@ -3,6 +3,13 @@
 All notable changes to this project will be documented in this file.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.2.13] — 2026-06-15
+
+- de-hardcode: `get_tax_rate` no longer fabricates a network-wide `2% / 10 sat` figure. Taxation is ad valorem and **per-Authority** — the tool now explains the model and redirects to the relevant Authority's `check_price` for the live rate. The Oracle, a free docent, quotes no rate it has no authority over. (The certification fee is computed by the SDK's `paid_tool` decorator from each Authority's own pricing model; the Oracle was never in that money path.)
+- de-hardcode: `economic_model` drops the fabricated topology (5 authorities / 30 operators / ~200 patrons), the hardcoded 2% fee and cascade percentages, and the `~$1,638/wk` / `$65k BTC` revenue projections. It now gives a qualitative model of how value flows and points at the live sources (`list_services`, `network_versions`, each Authority's `check_price`). The example SVG is kept but explicitly flagged illustrative, not live.
+- feat: `list_services(probe=True, kind=...)` — enumerate the live service network from the dpyc-community registry, then handshake each member's MCP endpoint (initialize + tools/list) for its **own** self-description and tool inventory. Nothing about peer services is hardcoded. Resilient: per-service timeout, brief caching, partial results, and a registry-only fallback — a sleeping (cold-start) service never breaks the listing.
+- docs: server `INSTRUCTIONS` advertise `list_services` and the docent framing for taxation (Oracle quotes no prices/rates of its own)
+
 ## [0.2.12] — 2026-06-14
 
 - voice: replace "Honor Chain" branding throughout the Oracle's user-facing strings, server instructions, README, and package description. The community/agreement is the **DPYC Social Contract**; the authority cascade is the **Certification Chain** (First Curator at its root). Aligns the Oracle — the canonical description other agents read — with the project's preferred voice.
