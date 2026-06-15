@@ -754,9 +754,9 @@ async def _probe_service(url: str) -> dict:
     """Handshake a peer MCP endpoint for its *own* self-description.
 
     Performs the standard MCP initialize + tools/list against the service's
-    public URL and returns what the service says about itself — server
-    name/version, its self-authored instructions, and its tool inventory.
-    Nothing here is hardcoded about the peer.
+    public URL and returns what the service says about itself — server name,
+    FastMCP framework version, its self-authored instructions, and its tool
+    inventory. Nothing here is hardcoded about the peer.
 
     Fully defensive: any failure (asleep cold start, unreachable, timeout,
     protocol error) resolves to a structured ``probe_status`` instead of
@@ -781,7 +781,12 @@ async def _probe_service(url: str) -> dict:
             return {
                 "probe_status": "live",
                 "server_name": getattr(server_info, "name", None),
-                "server_version": getattr(server_info, "version", None),
+                # serverInfo.version — for DPYC services this is the FastMCP
+                # framework version, not the service's own release (they
+                # don't override it). Named accordingly so it isn't mistaken
+                # for the operator's package version; use network_versions()
+                # for component release versions.
+                "framework_version": getattr(server_info, "version", None),
                 "self_description": instructions[:_INSTRUCTIONS_EXCERPT_CHARS],
                 "tool_count": len(tools),
                 "pricing_tools": pricing_tools,
