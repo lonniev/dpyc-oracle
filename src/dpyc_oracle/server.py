@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import base64
 import importlib.metadata
 import json
@@ -11,7 +12,7 @@ import uuid
 from datetime import datetime, timezone
 
 import httpx
-from fastmcp import FastMCP
+from fastmcp import Client, FastMCP
 from nostr_sdk import Event, PublicKey
 
 from dpyc_oracle import __version__
@@ -78,14 +79,19 @@ Oracle's register_authority tool commits the new Authority to the \
 community registry once the onboarding flow completes.
 
 This Oracle is a free, unauthenticated concierge that answers questions \
-about membership, governance, onboarding, and tax rates by reading the \
-dpyc-community registry on GitHub. It does not require payment or \
-credentials.
+about membership, governance, onboarding, and how taxation works by \
+reading the dpyc-community registry on GitHub. It does not require \
+payment or credentials. It quotes no prices or tax rates of its own — \
+those belong to each Operator's and Authority's pricing model. For a \
+live figure, call get_tax_rate() to learn how to ask the relevant \
+Authority's check_price.
 
 The live ecosystem is read from the dpyc-community registry — never guess at
-the roster. Call about() for the full set of ecosystem links, lookup_member()
-to resolve any npub, list_canonical_identities via a member service for tool
-identities, and network_versions() for current component versions.
+the roster. Call list_services() to enumerate the live network with each
+service's own self-description (MCP handshake), about() for the full set of
+ecosystem links, lookup_member() to resolve any npub,
+list_canonical_identities via a member service for tool identities, and
+network_versions() for current component versions.
 
 Canonical entry points:
 - dpyc-community: https://github.com/lonniev/dpyc-community (registry + governance — the authoritative member list)
@@ -477,85 +483,92 @@ async def lookup_member(npub: str) -> dict | str:
 
 @mcp.tool()
 async def get_tax_rate() -> dict:
-    """Get the current Tollbooth tax rate.
+    """Explain how Tollbooth certification taxation works.
 
-    Returns the tax percentage that Authorities charge on certified
-    purchase orders.
+    Taxation is ad valorem and **per-Authority** — there is no single
+    network-wide number, and the Oracle deliberately quotes none. The
+    actual fee is the Authority's own accounting, set in its pricing model
+    and reported at transaction time. This tool is a docent: it explains
+    the model and points to the live source. For the exact figure, query
+    the relevant Authority's ``check_price`` for ``certify_credits``.
     """
     return {
-        "rate_percent": 2,
-        "min_sats": 10,
-        "note": (
-            "Tax per certification = max(10, ceil(amount_sats * 2 / 100)). "
-            "Configurable per-Authority in a future release."
+        "model": "ad valorem (per-Authority)",
+        "summary": (
+            "Each Authority sets its own certification fee in its pricing "
+            "model and charges it on every certified purchase order. There "
+            "is no fixed network-wide rate — the figure belongs to the "
+            "Authority, not the Oracle."
+        ),
+        "how_to_get_the_live_rate": (
+            "Ask the Authority directly: call its check_price tool for the "
+            "certify_credits capability (free, no proof required). The "
+            "Authority reports the exact fee, including any minimum, at "
+            "the moment of the purchase order."
+        ),
+        "cascade": (
+            "Authorities are themselves Operators of their upstream "
+            "Authority, so a certification fee can cascade up the "
+            "Certification Chain to the First Curator. Each hop applies "
+            "that Authority's own rate."
+        ),
+        "discover_authorities": (
+            "Use list_services(kind='authority') to enumerate the live "
+            "Authorities, or lookup_member()/who_is_first_curator() to "
+            "resolve a specific one."
         ),
     }
 
 
 @mcp.tool()
 async def economic_model() -> dict:
-    """Get the DPYC Social Contract economic model summary and diagram.
+    """Explain the DPYC Social Contract economic model — qualitatively.
 
-    Returns the network topology, fee structure, cascade effects, and
-    weekly revenue projections for a 5-Authority network at scale.
-    Includes a link to the canonical SVG diagram in dpyc-community.
+    Describes how value flows through the network: ad valorem
+    certification fees, the cascade up the Certification Chain to the
+    First Curator, and where the live numbers actually live. The Oracle
+    quotes **no** rates, counts, or revenue figures — those belong to the
+    Authorities' pricing models and the live registry, not to a docent.
     Free, unauthenticated.
     """
     return {
-        "diagram_url": (
+        "model": "ad valorem certification fees over a Certification Chain",
+        "how_value_flows": [
+            "Patrons pre-fund a satoshi balance and consume Operator tools "
+            "without per-request payment ceremonies.",
+            "Operators collect Lightning fares and pay an ad valorem "
+            "certification fee to their sponsoring Authority on each "
+            "purchase order.",
+            "Authorities are themselves Operators of their upstream "
+            "Authority, so certification fees cascade up the chain.",
+            "The First Curator (Prime Authority) sits at the root and "
+            "receives revenue through that cascade.",
+        ],
+        "where_the_numbers_live": {
+            "rates": (
+                "Each Authority sets its own certification fee in its "
+                "pricing model. Query an Authority's check_price for the "
+                "live figure — see get_tax_rate()."
+            ),
+            "roster_and_topology": (
+                "The live set of Authorities and Operators is the registry, "
+                "not a fixed diagram. Use list_services() to enumerate it "
+                "and network_versions() for component versions."
+            ),
+            "revenue": (
+                "Throughput and revenue depend on real traffic and the "
+                "Bitcoin price; the Oracle does not estimate them."
+            ),
+        },
+        "illustrative_diagram_url": (
             "https://raw.githubusercontent.com/lonniev/dpyc-community"
             "/main/docs/diagrams/dpyc-network-5auth-economics.svg"
         ),
-        "topology": {
-            "authorities": 5,
-            "operators": 30,
-            "patrons": "~200",
-            "chains": {
-                "C_to_B_to_A": {
-                    "hops": 3,
-                    "description": "C -> B -> A (cascading chain)",
-                },
-                "D_direct": {
-                    "hops": 1,
-                    "description": "D -> A (direct to First Curator)",
-                },
-                "E_direct": {
-                    "hops": 1,
-                    "description": "E -> A (direct to First Curator)",
-                },
-            },
-        },
-        "fees": {
-            "certification_fee_percent": 2,
-            "description": (
-                "Each Authority collects a 2% ad valorem certification "
-                "fee per purchase order. The Prime Authority receives "
-                "revenue through the certification fee cascade — Authorities "
-                "are Operators of their upstream Authority and pay the same "
-                "fee when topping up their cert-sat reserve."
-            ),
-        },
-        "cascade_effect": {
-            "single_hop_effective_percent": 2.0,
-            "two_hop_effective_percent": 2.04,
-            "three_hop_effective_percent": 2.0408,
-            "cascade_overhead_at_max_depth_percent": 0.81,
-            "note": (
-                "Even at maximum chain depth (3 hops), the total "
-                "effective rate stays under 2.05%."
-            ),
-        },
-        "weekly_projections": {
-            "ecosystem_revenue_usd": "~$1,638",
-            "curator_revenue_usd": "~$32",
-            "assumptions": {
-                "btc_price_usd": "~$65,000",
-                "sats_per_usd": "1,000 sats ~ $0.65",
-                "operators": 30,
-                "tool_calls_per_hour": 1000,
-                "avg_api_sats_per_call": 15,
-            },
-        },
+        "diagram_note": (
+            "Illustrative example of a hypothetical multi-Authority "
+            "network — not live figures. Use list_services() and "
+            "network_versions() for the current network."
+        ),
     }
 
 
@@ -724,6 +737,171 @@ async def service_status() -> dict:
         "service": "dpyc-oracle",
         "versions": versions,
         "ecosystem_links": ECOSYSTEM_LINKS,
+    }
+
+
+# -- Live service self-description probe (MCP-to-MCP) -----------------------
+
+_PROBE_TTL_SECONDS = 300
+_PROBE_TIMEOUT_SECONDS = 6.0
+_INSTRUCTIONS_EXCERPT_CHARS = 600
+
+# url -> (result_dict, fetched_at_monotonic)
+_probe_cache: dict[str, tuple[dict, float]] = {}
+
+
+async def _probe_service(url: str) -> dict:
+    """Handshake a peer MCP endpoint for its *own* self-description.
+
+    Performs the standard MCP initialize + tools/list against the service's
+    public URL and returns what the service says about itself — server
+    name/version, its self-authored instructions, and its tool inventory.
+    Nothing here is hardcoded about the peer.
+
+    Fully defensive: any failure (asleep cold start, unreachable, timeout,
+    protocol error) resolves to a structured ``probe_status`` instead of
+    raising, because a browsing answer must never fail. Results are cached
+    briefly so a visitor doesn't re-hammer every endpoint.
+    """
+    now = time.monotonic()
+    cached = _probe_cache.get(url)
+    if cached is not None and (now - cached[1]) < _PROBE_TTL_SECONDS:
+        return cached[0]
+
+    async def _handshake() -> dict:
+        async with Client(url) as client:
+            init = client.initialize_result
+            server_info = getattr(init, "serverInfo", None)
+            instructions = getattr(init, "instructions", None) or ""
+            tools = await client.list_tools()
+            pricing_tools = [
+                t.name for t in tools
+                if t.name.endswith(("check_price", "purchase_credits"))
+            ]
+            return {
+                "probe_status": "live",
+                "server_name": getattr(server_info, "name", None),
+                "server_version": getattr(server_info, "version", None),
+                "self_description": instructions[:_INSTRUCTIONS_EXCERPT_CHARS],
+                "tool_count": len(tools),
+                "pricing_tools": pricing_tools,
+                "pricing_note": (
+                    "Live prices come from this service's own check_price "
+                    "tool — the Oracle does not quote them."
+                ),
+            }
+
+    try:
+        result = await asyncio.wait_for(_handshake(), _PROBE_TIMEOUT_SECONDS)
+    except (asyncio.TimeoutError, TimeoutError):
+        result = {
+            "probe_status": "timeout",
+            "note": (
+                "No response within the probe window; the service may be "
+                "warming up from a cold start. Registry data still applies."
+            ),
+        }
+    except Exception as exc:  # defensive: a browsing answer must never fail
+        result = {
+            "probe_status": "unreachable",
+            "note": f"Could not complete an MCP handshake: {type(exc).__name__}.",
+        }
+
+    _probe_cache[url] = (result, now)
+    return result
+
+
+@mcp.tool()
+async def list_services(probe: bool = True, kind: str = "all") -> dict:
+    """Enumerate the live DPYC service network with self-described summaries.
+
+    Reads the member roster from the dpyc-community registry, then (when
+    ``probe=True``) performs a lightweight MCP handshake against each
+    member's public service endpoint to fetch that service's *own*
+    self-description and tool inventory. Nothing about the services is
+    hardcoded here — descriptions are authored by each service, and prices
+    come from each Operator/Authority pricing model (call the service's
+    ``check_price``).
+
+    Resilient by design: per-service timeout, partial results, brief
+    caching, and a registry-only fallback when an endpoint is asleep or
+    unreachable. A sleeping service never breaks the listing. Free,
+    unauthenticated.
+
+    Args:
+        probe: Handshake each endpoint for a live self-description. Set
+            False for a fast registry-only listing (no network fan-out).
+        kind: Role filter — "all", "operator", "authority", or "advocate".
+    """
+    _, registry = _ensure_initialized()
+    try:
+        members = await registry.get_members()
+    except Exception as exc:
+        return {"success": False, "error": f"Could not read the registry: {exc}"}
+
+    wanted = kind.strip().lower()
+    role_filter = {
+        "operator": {"operator"},
+        "authority": {"authority", "prime_authority"},
+        "advocate": {"advocate"},
+        "all": {"operator", "authority", "prime_authority", "advocate"},
+    }.get(wanted)
+    if role_filter is None:
+        return {
+            "success": False,
+            "error": (
+                f"Unknown kind '{kind}'. Use all, operator, authority, "
+                "or advocate."
+            ),
+        }
+
+    services: list[dict] = []
+    for m in members:
+        if m.get("role") not in role_filter:
+            continue
+        if m.get("status") == "banned":
+            continue
+        for svc in m.get("services", []) or []:
+            url = svc.get("url")
+            if not url:
+                continue
+            services.append(
+                {
+                    "display_name": m.get("display_name"),
+                    "npub": m.get("npub"),
+                    "role": m.get("role"),
+                    "service_name": svc.get("name"),
+                    "url": url,
+                    "registry_description": svc.get("description"),
+                }
+            )
+
+    if probe and services:
+        probes = await asyncio.gather(
+            *(_probe_service(s["url"]) for s in services),
+            return_exceptions=True,
+        )
+        for s, p in zip(services, probes):
+            if isinstance(p, Exception):
+                s["live"] = {
+                    "probe_status": "unreachable",
+                    "note": type(p).__name__,
+                }
+            else:
+                s["live"] = p
+
+    return {
+        "success": True,
+        "kind": wanted,
+        "probed": probe,
+        "count": len(services),
+        "services": services,
+        "note": (
+            "Service self-descriptions are authored by each service via its "
+            "MCP handshake; certification rates and tool prices come from "
+            "each Operator/Authority pricing model (call the service's "
+            "check_price). The Oracle hardcodes none of it."
+        ),
     }
 
 

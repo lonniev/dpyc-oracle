@@ -46,10 +46,12 @@ def _reset_server_state():
     server_module._settings = None
     server_module._registry = None
     server_module._challenges.clear()
+    server_module._probe_cache.clear()
     yield
     server_module._settings = None
     server_module._registry = None
     server_module._challenges.clear()
+    server_module._probe_cache.clear()
 
 
 SAMPLE_NETWORK_STATUS = {
@@ -115,49 +117,160 @@ async def test_lookup_member_not_found(mock_registry):
 
 
 @pytest.mark.asyncio
-async def test_get_tax_rate():
+async def test_get_tax_rate_quotes_no_number():
+    """The docent explains the model and redirects — it must not fabricate
+    a network-wide rate or minimum."""
     result = await server_module.get_tax_rate()
-    assert result["rate_percent"] == 2
-    assert result["min_sats"] == 10
-    assert "note" in result
+    assert "rate_percent" not in result
+    assert "min_sats" not in result
+    assert "ad valorem" in result["model"]
+    # Redirects the visitor to the Authority's own live source.
+    assert "check_price" in result["how_to_get_the_live_rate"]
+    assert "cascade" in result
+    # No bare integer rate hiding anywhere in the values.
+    assert not any(isinstance(v, (int, float)) for v in result.values())
 
 
 @pytest.mark.asyncio
-async def test_economic_model():
+async def test_economic_model_is_qualitative():
+    """No fabricated topology, fee percentages, or revenue figures — only a
+    qualitative model plus pointers to the live sources."""
     result = await server_module.economic_model()
     assert isinstance(result, dict)
 
-    # Diagram URL
-    assert "diagram_url" in result
-    assert "dpyc-network-5auth-economics.svg" in result["diagram_url"]
-    assert result["diagram_url"].startswith("https://raw.githubusercontent.com/")
+    # The old hardcoded numeric structure is gone.
+    assert "topology" not in result
+    assert "fees" not in result
+    assert "cascade_effect" not in result
+    assert "weekly_projections" not in result
 
-    # Topology
-    topo = result["topology"]
-    assert topo["authorities"] == 5
-    assert topo["operators"] == 30
-    assert "chains" in topo
-    assert "C_to_B_to_A" in topo["chains"]
-    assert topo["chains"]["C_to_B_to_A"]["hops"] == 3
+    # Qualitative explanation remains.
+    assert "ad valorem" in result["model"]
+    assert isinstance(result["how_value_flows"], list)
+    assert any("First Curator" in step for step in result["how_value_flows"])
 
-    # Fees
-    fees = result["fees"]
-    assert fees["certification_fee_percent"] == 2
-    assert "curator_royalty_percent" not in fees
+    # Points at the live sources rather than quoting figures.
+    where = result["where_the_numbers_live"]
+    assert "check_price" in where["rates"]
+    assert "list_services" in where["roster_and_topology"]
 
-    # Cascade effect
-    cascade = result["cascade_effect"]
-    assert cascade["single_hop_effective_percent"] == 2.0
-    assert cascade["three_hop_effective_percent"] == 2.0408
-    assert cascade["cascade_overhead_at_max_depth_percent"] == 0.81
+    # The diagram is kept but explicitly flagged as illustrative, not live.
+    assert "illustrative_diagram_url" in result
+    assert "dpyc-network-5auth-economics.svg" in result["illustrative_diagram_url"]
+    assert "Illustrative" in result["diagram_note"]
 
-    # Weekly projections
-    weekly = result["weekly_projections"]
-    assert "ecosystem_revenue_usd" in weekly
-    assert "curator_revenue_usd" in weekly
-    assert weekly["assumptions"]["operators"] == 30
-    assert weekly["assumptions"]["tool_calls_per_hour"] == 1000
-    assert weekly["assumptions"]["avg_api_sats_per_call"] == 15
+    # No bare numeric values masquerading as live data.
+    assert not any(isinstance(v, (int, float)) for v in result.values())
+
+
+MEMBERS_WITH_SERVICES = [
+    {
+        "npub": ALICE_NPUB,
+        "role": "operator",
+        "status": "active",
+        "display_name": "Alice",
+        "services": [
+            {
+                "name": "alice-mcp",
+                "url": "https://alice.example/mcp",
+                "description": "Alice's data service",
+            }
+        ],
+    },
+    {
+        "npub": CURATOR_NPUB,
+        "role": "prime_authority",
+        "status": "active",
+        "display_name": "The Curator",
+        "services": [
+            {"name": "tollbooth-authority", "url": "https://curator.example/mcp"}
+        ],
+    },
+    {
+        "npub": BANNED_NPUB,
+        "role": "operator",
+        "status": "banned",
+        "display_name": "Bad Actor",
+        "services": [{"name": "bad", "url": "https://bad.example/mcp"}],
+    },
+]
+
+
+@pytest.mark.asyncio
+async def test_list_services_registry_only(mock_registry):
+    mock_registry.get_members.return_value = MEMBERS_WITH_SERVICES
+    result = await server_module.list_services(probe=False)
+    assert result["success"] is True
+    assert result["probed"] is False
+    # Banned member excluded; two live services remain.
+    names = {s["service_name"] for s in result["services"]}
+    assert names == {"alice-mcp", "tollbooth-authority"}
+    # No probe → no live block, and registry description is surfaced.
+    assert all("live" not in s for s in result["services"])
+    alice = next(s for s in result["services"] if s["service_name"] == "alice-mcp")
+    assert alice["registry_description"] == "Alice's data service"
+
+
+@pytest.mark.asyncio
+async def test_list_services_kind_filter(mock_registry):
+    mock_registry.get_members.return_value = MEMBERS_WITH_SERVICES
+    result = await server_module.list_services(probe=False, kind="authority")
+    assert result["count"] == 1
+    assert result["services"][0]["role"] == "prime_authority"
+
+
+@pytest.mark.asyncio
+async def test_list_services_unknown_kind(mock_registry):
+    result = await server_module.list_services(probe=False, kind="bogus")
+    assert result["success"] is False
+    assert "Unknown kind" in result["error"]
+
+
+@pytest.mark.asyncio
+async def test_list_services_probe_enriches(mock_registry):
+    mock_registry.get_members.return_value = MEMBERS_WITH_SERVICES
+
+    async def fake_probe(url):
+        return {"probe_status": "live", "server_name": url, "tool_count": 3}
+
+    with patch.object(server_module, "_probe_service", side_effect=fake_probe):
+        result = await server_module.list_services(probe=True)
+
+    assert result["probed"] is True
+    assert all(s["live"]["probe_status"] == "live" for s in result["services"])
+
+
+@pytest.mark.asyncio
+async def test_list_services_sleeping_service_does_not_break(mock_registry):
+    mock_registry.get_members.return_value = MEMBERS_WITH_SERVICES
+
+    async def sleepy_probe(url):
+        return {"probe_status": "timeout", "note": "warming up"}
+
+    with patch.object(server_module, "_probe_service", side_effect=sleepy_probe):
+        result = await server_module.list_services(probe=True)
+
+    assert result["success"] is True
+    assert all(s["live"]["probe_status"] == "timeout" for s in result["services"])
+
+
+@pytest.mark.asyncio
+async def test_probe_service_is_defensive():
+    """A failed handshake must resolve to a structured status, never raise."""
+
+    class BoomClient:
+        def __init__(self, url):
+            pass
+
+        async def __aenter__(self):
+            raise RuntimeError("boom")
+
+        async def __aexit__(self, *a):
+            return False
+
+    with patch.object(server_module, "Client", BoomClient):
+        result = await server_module._probe_service("https://nope.example/mcp")
+    assert result["probe_status"] == "unreachable"
 
 
 @pytest.mark.asyncio
