@@ -40,6 +40,7 @@ ECOSYSTEM_LINKS = {
     "schwab_mcp": "https://github.com/lonniev/schwab-mcp",
     "taxsort_mcp": "https://github.com/lonniev/taxsort-mcp",
     "optionality_mcp": "https://github.com/lonniev/optionality-mcp",
+    "cypher_mcp": "https://github.com/lonniev/cypher-mcp",
     # Advocates (shared utilities, unmonetized)
     "tollbooth_oauth2_collector": "https://github.com/lonniev/tollbooth-oauth2-collector",
     "tollbooth_shortlinks": "https://github.com/lonniev/tollbooth-shortlinks",

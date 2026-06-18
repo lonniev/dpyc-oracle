@@ -91,6 +91,7 @@ The authoritative, always-current roster lives in the registry — call `lookup_
 - [schwab-mcp](https://github.com/lonniev/schwab-mcp) — Charles Schwab brokerage data
 - [taxsort-mcp](https://github.com/lonniev/taxsort-mcp) — Tax sorting + classification
 - [optionality-mcp](https://github.com/lonniev/optionality-mcp) — Options analytics
+- [cypher-mcp](https://github.com/lonniev/cypher-mcp) — Monetized graph answers (named Cypher over Neo4j/AuraDB)
 
 **Advocates** (shared utilities, unmonetized)
 - [tollbooth-oauth2-collector](https://github.com/lonniev/tollbooth-oauth2-collector) — OAuth2 authorization-code collection

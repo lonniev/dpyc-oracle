@@ -3,6 +3,10 @@
 All notable changes to this project will be documented in this file.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+- ecosystem: add `cypher-mcp` (monetized graph answers — named Cypher over Neo4j/AuraDB) to `ECOSYSTEM_LINKS` and the README "Related Repos" Operators list. The newcomer Operator was absent from the Oracle's static roster; the concierge now points at it alongside the other live services.
+
 ## [0.2.14] — 2026-06-15
 
 - clarity: `list_services` renames the probe's `server_version` field to `framework_version`. The value is `serverInfo.version`, which for DPYC services is the FastMCP framework version (they don't override it) — not the operator's package release. The new name settles that ambiguity; use `network_versions()` for component release versions. Verified live against the deployed Oracle: 11/13 endpoints handshook clean, the 2 non-MCP OAuth advocate URLs degraded gracefully to `unreachable`.
