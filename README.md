@@ -8,9 +8,12 @@ A free, unauthenticated MCP concierge service for the [DPYC Social Contract](htt
 |------|--------|-------------|
 | `about()` | — | Extended narration from repo docs (README + GOVERNANCE) |
 | `lookup_member(npub)` | `npub: str` | Look up a member by Nostr npub |
-| `get_tax_rate()` | — | Current Tollbooth tax rate (2%) |
+| `list_services(probe, kind)` | `probe: bool = True, kind: str = "all"` | Enumerate the live service network from the registry, optionally MCP-handshaking each member for its own self-description and tool inventory |
+| `get_tax_rate()` | — | Explains per-Authority ad valorem certification taxation; quotes no rate of its own and redirects to the relevant Authority's `check_price` |
+| `economic_model()` | — | Qualitative model of how value flows up the Certification Chain (no hardcoded rates, counts, or revenue figures) |
 | `get_rulebook()` | — | GOVERNANCE.md content |
 | `how_to_join()` | — | Tier-specific onboarding guide |
+| `how_to_add_authority()` | — | End-to-end guide for spinning up a new Tollbooth Authority (fetched live from dpyc-community) |
 | `who_is_first_curator()` | — | First Curator's npub and record |
 | `network_versions()` | — | Current recommended component versions |
 | `network_advisory()` | — | Deployment advisory for operators |
@@ -19,8 +22,13 @@ A free, unauthenticated MCP concierge service for the [DPYC Social Contract](htt
 | `confirm_citizenship(npub, challenge_id, signed_event_json)` | `npub: str, challenge_id: str, signed_event_json: str` | Complete onboarding with signed Nostr event |
 | `register_advocate(npub, display_name, service_name, service_url, service_description)` | `npub: str, display_name: str, service_name: str, service_url: str, service_description: str` | Register a community utility service as an Advocate |
 | `register_authority(authority_npub, display_name, service_url, upstream_authority_npub)` | `authority_npub: str, display_name: str, service_url: str, upstream_authority_npub: str` | Register a new Authority (called by onboarding flow) |
+| `register_operator(operator_npub, display_name, service_url, authority_npub)` | `operator_npub: str, display_name: str, service_url: str, authority_npub: str` | Register a new Operator (called by the sponsoring Authority) |
+| `update_operator(operator_npub, service_url, display_name, authority_npub)` | `operator_npub: str, service_url: str = "", display_name: str = "", authority_npub: str = ""` | Update an existing Operator's registry entry (e.g. new MCP endpoint) |
+| `deregister_operator(operator_npub, authority_npub)` | `operator_npub: str, authority_npub: str` | Remove an Operator from the registry (Authority disowns the Operator) |
 | `check_ban_status(npub)` | `npub: str` | Check if an npub is banned |
-| `economic_model()` | — | Fee schedule and economic model details |
+| `publish_campaign(author_npub, operator_npub, campaign_json, campaign_name, campaign_markdown)` | `author_npub: str, operator_npub: str, campaign_json: str, campaign_name: str = "", campaign_markdown: str = ""` | Publish a pricing campaign to the DPYC community |
+| `list_campaigns(operator_npub, author_npub)` | `operator_npub: str = "", author_npub: str = ""` | List published pricing campaigns, optionally filtered by operator or author |
+| `get_campaign(author_npub, operator_npub, slug, format)` | `author_npub: str, operator_npub: str, slug: str, format: str = "json"` | Retrieve a published pricing campaign (JSON or Markdown) |
 
 ### Stubbed (Future)
 
@@ -58,13 +66,13 @@ The Oracle commits `members/advocates/{npub}.json` directly. Peer MCP servers di
 
 ## How to Connect
 
-This service is hosted on [FastMCP Cloud](https://www.fastmcp.com). Add it to your MCP client configuration:
+This service is hosted on Horizon. Add it to your MCP client configuration:
 
 ```json
 {
   "mcpServers": {
     "dpyc-oracle": {
-      "url": "https://www.fastmcp.com/server/lonniev/dpyc-oracle"
+      "url": "https://dpyc-oracle.fastmcp.app/mcp"
     }
   }
 }
