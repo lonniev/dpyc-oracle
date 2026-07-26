@@ -160,7 +160,7 @@ async def _commit_membership(
     if not token:
         raise RuntimeError(
             "GitHub token not configured. Set GITHUB_TOKEN env var on "
-            "FastMCP Cloud to enable automated membership commits."
+            "Horizon to enable automated membership commits."
         )
 
     repo = settings.dpyc_community_repo
@@ -220,7 +220,7 @@ async def _commit_authority(
     if not token:
         raise RuntimeError(
             "GitHub token not configured. Set GITHUB_TOKEN env var on "
-            "FastMCP Cloud to enable automated membership commits."
+            "Horizon to enable automated membership commits."
         )
 
     repo = settings.dpyc_community_repo
@@ -282,7 +282,7 @@ async def _commit_operator(
     if not token:
         raise RuntimeError(
             "GitHub token not configured. Set GITHUB_TOKEN env var on "
-            "FastMCP Cloud to enable automated membership commits."
+            "Horizon to enable automated membership commits."
         )
 
     repo = settings.dpyc_community_repo
@@ -347,7 +347,7 @@ async def _commit_advocate(
     if not token:
         raise RuntimeError(
             "GitHub token not configured. Set GITHUB_TOKEN env var on "
-            "FastMCP Cloud to enable automated membership commits."
+            "Horizon to enable automated membership commits."
         )
 
     repo = settings.dpyc_community_repo
