@@ -7,6 +7,24 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - ecosystem: add `cypher-mcp` (monetized graph answers — named Cypher over Neo4j/AuraDB) to `ECOSYSTEM_LINKS` and the README "Related Repos" Operators list. The newcomer Operator was absent from the Oracle's static roster; the concierge now points at it alongside the other live services.
 
+## 0.2.15 — 2026-08-10
+
+### Changed — registry publishing, roster, and honest probe naming
+
+MCP Registry publishing via OIDC, cypher-mcp added to the roster, and `list_services`'
+probe field renamed `server_version` → `framework_version`, because it reported the
+framework's version and calling it the server's invited the wrong conclusion.
+
+### Changed — CI runs the check the deploy runs
+
+`test.yml` inspects the deploy entrypoint, the check Horizon performs at build time. A suite
+that never imports the entrypoint cannot fail for the reason a build fails — that gap cost
+optionality-mcp four days of silent non-deployment. `release.yml` notes extraction accepts
+this CHANGELOG's heading style instead of publishing a 16-byte body.
+
+Note: 0.2.9 through 0.2.14 were written here but never tagged, so none of them shipped a
+release. This entry closes that gap going forward; the earlier sections remain as the record.
+
 ## [0.2.14] — 2026-06-15
 
 - clarity: `list_services` renames the probe's `server_version` field to `framework_version`. The value is `serverInfo.version`, which for DPYC services is the FastMCP framework version (they don't override it) — not the operator's package release. The new name settles that ambiguity; use `network_versions()` for component release versions. Verified live against the deployed Oracle: 11/13 endpoints handshook clean, the 2 non-MCP OAuth advocate URLs degraded gracefully to `unreachable`.
