@@ -29,6 +29,23 @@ dev = [
 [tool.hatch.build.targets.wheel]
 packages = ["src/dpyc_oracle"]
 
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+# An explicit rule set, matching excalibur-mcp and thebrain-mcp. This repo had no
+# ruff configuration at all and so inherited whatever ruff's defaults happened to be
+# — which is why CI went red on 2026-07-26 without a commit: 0.16 enabled new rules
+# by default and the workflow installs ruff unpinned. Declaring the set is what makes
+# a repo immune to that, and it is what the already-stable repos in the fleet do.
+#
+# BLE001 (blind-except) is deliberately outside this set rather than silenced by name.
+# The Oracle's job is to read a remote registry and answer; a broad catch that returns
+# a situation instead of raising is the intended shape here, not an oversight.
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "W", "UP"]
+ignore = ["E501"]
+
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]

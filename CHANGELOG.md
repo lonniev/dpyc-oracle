@@ -9,6 +9,23 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## 0.2.15 — 2026-08-10
 
+### Fixed — CI went red without a commit, and stayed red for two weeks
+
+This repo had no ruff configuration at all, so it inherited whatever ruff's defaults
+happened to be — and the workflow installs ruff unpinned. 0.16 enabled new rules by
+default and `main` went red on 2026-07-26 with nobody having touched it, then stayed
+red, which is why the release below is the first since 0.2.8 despite six versions
+being written in the meantime.
+
+The rule set is now declared explicitly, matching excalibur-mcp and thebrain-mcp — the
+repos in the fleet that never had this problem, because declaring the set is what makes
+a repo immune to a linter's defaults moving underneath it. One real violation (unsorted
+imports in a test) is fixed rather than configured away.
+
+`BLE001` sits outside the selected set rather than being silenced by name: the Oracle
+reads a remote registry and answers, so a broad catch that returns a situation instead
+of raising is the intended shape here, not an oversight.
+
 ### Changed — registry publishing, roster, and honest probe naming
 
 MCP Registry publishing via OIDC, cypher-mcp added to the roster, and `list_services`'

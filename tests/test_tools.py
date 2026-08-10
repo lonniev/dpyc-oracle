@@ -3,7 +3,7 @@ from __future__ import annotations
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from nostr_sdk import Keys, EventBuilder
+from nostr_sdk import EventBuilder, Keys
 
 import dpyc_oracle.server as server_module
 from dpyc_oracle.registry import CommunityRegistry
