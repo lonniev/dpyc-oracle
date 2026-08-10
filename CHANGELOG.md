@@ -9,6 +9,19 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## 0.2.15 — 2026-08-10
 
+### Fixed — the onboarding instructions told citizens to call a removed API
+
+`request_citizenship` hands back a runnable snippet, and it said
+`EventBuilder.text_note(...).sign_with_keys(keys)`. nostr-sdk 0.45.0 removed that
+constructor. Anyone following the Oracle's own instructions with a current nostr-sdk
+got an `AttributeError` — the citizenship handshake, broken for new citizens, in the
+one place a newcomer is most likely to be. It now reads
+`EventBuilder(Kind(1), content).finalize(keys)`, and the tests exercise that path.
+
+`nostr-sdk` was declared `>=0.44.0` with no upper bound, which is how a breaking API
+change walked in unannounced. It is pinned to the 0.45 line now, so the code targets
+one known API instead of whichever one resolution happens to pick.
+
 ### Fixed — CI went red without a commit, and stayed red for two weeks
 
 This repo had no ruff configuration at all, so it inherited whatever ruff's defaults
