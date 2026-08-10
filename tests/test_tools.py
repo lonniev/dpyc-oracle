@@ -3,7 +3,7 @@ from __future__ import annotations
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from nostr_sdk import Keys, EventBuilder
+from nostr_sdk import EventBuilder, Keys, Kind
 
 import dpyc_oracle.server as server_module
 from dpyc_oracle.registry import CommunityRegistry
@@ -455,7 +455,7 @@ async def test_confirm_citizenship_wrong_signer(mock_registry):
 
     # Sign with keys_b but claim npub_a
     nonce = req["nonce"]
-    event = EventBuilder.text_note(f"DPYC-CITIZENSHIP:{nonce}").sign_with_keys(keys_b)
+    event = EventBuilder(Kind(1), f"DPYC-CITIZENSHIP:{nonce}").finalize(keys_b)
 
     result = await server_module.confirm_citizenship(
         npub_a, req["challenge_id"], event.as_json()
@@ -471,7 +471,7 @@ async def test_confirm_citizenship_wrong_nonce(mock_registry):
     assert req["success"] is True
 
     # Sign with correct keys but wrong nonce
-    event = EventBuilder.text_note("DPYC-CITIZENSHIP:wrongnonce").sign_with_keys(keys)
+    event = EventBuilder(Kind(1), "DPYC-CITIZENSHIP:wrongnonce").finalize(keys)
 
     result = await server_module.confirm_citizenship(
         npub, req["challenge_id"], event.as_json()
@@ -489,9 +489,7 @@ async def test_confirm_citizenship_expired_challenge(mock_registry):
     # Manually expire the challenge
     server_module._challenges[req["challenge_id"]]["expires_at"] = 0
 
-    event = EventBuilder.text_note(
-        f"DPYC-CITIZENSHIP:{req['nonce']}"
-    ).sign_with_keys(keys)
+    event = EventBuilder(Kind(1), f"DPYC-CITIZENSHIP:{req['nonce']}").finalize(keys)
 
     result = await server_module.confirm_citizenship(
         npub, req["challenge_id"], event.as_json()
@@ -510,7 +508,7 @@ async def test_confirm_citizenship_full_success(mock_registry):
 
     # Sign the challenge with the correct keys
     nonce = req["nonce"]
-    event = EventBuilder.text_note(f"DPYC-CITIZENSHIP:{nonce}").sign_with_keys(keys)
+    event = EventBuilder(Kind(1), f"DPYC-CITIZENSHIP:{nonce}").finalize(keys)
 
     # Mock _commit_membership since we don't have a real GitHub token
     with patch.object(
@@ -582,7 +580,7 @@ async def test_confirm_citizenship_pr_failure_returns_error(mock_registry):
     assert req["success"] is True
 
     nonce = req["nonce"]
-    event = EventBuilder.text_note(f"DPYC-CITIZENSHIP:{nonce}").sign_with_keys(keys)
+    event = EventBuilder(Kind(1), f"DPYC-CITIZENSHIP:{nonce}").finalize(keys)
 
     with patch.object(
         server_module,

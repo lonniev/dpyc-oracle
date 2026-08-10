@@ -7,6 +7,54 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - ecosystem: add `cypher-mcp` (monetized graph answers — named Cypher over Neo4j/AuraDB) to `ECOSYSTEM_LINKS` and the README "Related Repos" Operators list. The newcomer Operator was absent from the Oracle's static roster; the concierge now points at it alongside the other live services.
 
+## 0.2.15 — 2026-08-10
+
+### Fixed — the onboarding instructions told citizens to call a removed API
+
+`request_citizenship` hands back a runnable snippet, and it said
+`EventBuilder.text_note(...).sign_with_keys(keys)`. nostr-sdk 0.45.0 removed that
+constructor. Anyone following the Oracle's own instructions with a current nostr-sdk
+got an `AttributeError` — the citizenship handshake, broken for new citizens, in the
+one place a newcomer is most likely to be. It now reads
+`EventBuilder(Kind(1), content).finalize(keys)`, and the tests exercise that path.
+
+`nostr-sdk` was declared `>=0.44.0` with no upper bound, which is how a breaking API
+change walked in unannounced. It is pinned to the 0.45 line now, so the code targets
+one known API instead of whichever one resolution happens to pick.
+
+### Fixed — CI went red without a commit, and stayed red for two weeks
+
+This repo had no ruff configuration at all, so it inherited whatever ruff's defaults
+happened to be — and the workflow installs ruff unpinned. 0.16 enabled new rules by
+default and `main` went red on 2026-07-26 with nobody having touched it, then stayed
+red, which is why the release below is the first since 0.2.8 despite six versions
+being written in the meantime.
+
+The rule set is now declared explicitly, matching excalibur-mcp and thebrain-mcp — the
+repos in the fleet that never had this problem, because declaring the set is what makes
+a repo immune to a linter's defaults moving underneath it. One real violation (unsorted
+imports in a test) is fixed rather than configured away.
+
+`BLE001` sits outside the selected set rather than being silenced by name: the Oracle
+reads a remote registry and answers, so a broad catch that returns a situation instead
+of raising is the intended shape here, not an oversight.
+
+### Changed — registry publishing, roster, and honest probe naming
+
+MCP Registry publishing via OIDC, cypher-mcp added to the roster, and `list_services`'
+probe field renamed `server_version` → `framework_version`, because it reported the
+framework's version and calling it the server's invited the wrong conclusion.
+
+### Changed — CI runs the check the deploy runs
+
+`test.yml` inspects the deploy entrypoint, the check Horizon performs at build time. A suite
+that never imports the entrypoint cannot fail for the reason a build fails — that gap cost
+optionality-mcp four days of silent non-deployment. `release.yml` notes extraction accepts
+this CHANGELOG's heading style instead of publishing a 16-byte body.
+
+Note: 0.2.9 through 0.2.14 were written here but never tagged, so none of them shipped a
+release. This entry closes that gap going forward; the earlier sections remain as the record.
+
 ## [0.2.14] — 2026-06-15
 
 - clarity: `list_services` renames the probe's `server_version` field to `framework_version`. The value is `serverInfo.version`, which for DPYC services is the FastMCP framework version (they don't override it) — not the operator's package release. The new name settles that ambiguity; use `network_versions()` for component release versions. Verified live against the deployed Oracle: 11/13 endpoints handshook clean, the 2 non-MCP OAuth advocate URLs degraded gracefully to `unreachable`.

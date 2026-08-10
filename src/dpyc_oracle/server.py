@@ -985,10 +985,10 @@ async def request_citizenship(npub: str, display_name: str) -> dict:
             f"Required event content: {_CHALLENGE_PREFIX}{nonce}\n\n"
             "Example using nostr-sdk:\n"
             "```python\n"
-            "from nostr_sdk import Keys, EventBuilder\n"
+            "from nostr_sdk import Keys, Kind, EventBuilder\n"
             "keys = Keys.parse('nsec1YOUR_SECRET_KEY')\n"
-            f"event = EventBuilder.text_note('{_CHALLENGE_PREFIX}{nonce}')"
-            ".sign_with_keys(keys)\n"
+            f"event = EventBuilder(Kind(1), '{_CHALLENGE_PREFIX}{nonce}')"
+            ".finalize(keys)\n"
             "print(event.as_json())\n"
             "```"
         ),
