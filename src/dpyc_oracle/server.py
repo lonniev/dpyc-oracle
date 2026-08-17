@@ -114,6 +114,8 @@ def _ensure_initialized() -> tuple[OracleSettings, CommunityRegistry]:
         _registry = CommunityRegistry(
             base_url=_settings.dpyc_community_base_url,
             cache_ttl_seconds=_settings.cache_ttl_seconds,
+            repo=_settings.dpyc_community_repo,
+            github_token=_settings.github_token,
         )
     return _settings, _registry
 
@@ -909,6 +911,80 @@ async def list_services(probe: bool = True, kind: str = "all") -> dict:
             "check_price). The Oracle hardcodes none of it."
         ),
     }
+
+
+# --- Operator bootstrap-support tools -------------------------------------
+# These let an Operator MCP answer community questions with a single MCP call
+# to the Oracle instead of reading GitHub directly. Operators are nsec-only and
+# must never touch the dpyc-community registry themselves — the Oracle is the
+# one place that reads GitHub. All free, unauthenticated, read-only.
+
+
+@mcp.tool()
+async def get_relays() -> dict:
+    """Return the DPYC Nostr relay set (primary-first).
+
+    The single source of truth is ``dpyc-community/relays.json``. An Operator
+    seeds its relay set from here at cold start (its only fixed dependency is
+    this Oracle endpoint), then reads its own bootstrap config from Nostr using
+    just its nsec — no direct GitHub access.
+    """
+    _, registry = _ensure_initialized()
+    try:
+        relays = await registry.get_relays()
+    except Exception as exc:  # noqa: BLE001
+        return {"success": False, "error": f"Could not read relays.json: {exc}"}
+    return {"success": True, "relays": relays, "count": len(relays)}
+
+
+@mcp.tool()
+async def resolve_authority_for(npub: str) -> dict:
+    """Resolve the certifying Authority for an operator npub.
+
+    Returns the Authority's ``{npub, url, name}`` (from the operator's
+    ``upstream_authority_npub``). Use this after bootstrap to learn — and
+    verify — which Authority signed your config, without reading GitHub.
+    """
+    _, registry = _ensure_initialized()
+    try:
+        authority = await registry.resolve_authority_for(npub)
+    except Exception as exc:  # noqa: BLE001
+        return {"success": False, "error": f"Could not read the registry: {exc}"}
+    if authority is None:
+        return {
+            "success": False,
+            "error": (
+                f"No upstream Authority resolved for {npub[:16]}… — the npub is "
+                "unknown, is a trust root, or its Authority lists no service."
+            ),
+        }
+    return {"success": True, "authority": authority}
+
+
+@mcp.tool()
+async def resolve_service(name: str = "", npub: str = "") -> dict:
+    """Resolve a DPYC service by ``name`` or ``npub``.
+
+    Returns ``{npub, url, name, role, purchase_mode}`` where ``purchase_mode``
+    is the registry-topology fact ``"certified"`` or ``"direct"`` (not a price).
+    Supply exactly one of ``name`` or ``npub``.
+    """
+    _, registry = _ensure_initialized()
+    if bool(name) == bool(npub):
+        return {
+            "success": False,
+            "error": "Supply exactly one of 'name' or 'npub'.",
+        }
+    try:
+        service = await registry.resolve_service(
+            name=name or None, npub=npub or None
+        )
+    except Exception as exc:  # noqa: BLE001
+        return {"success": False, "error": f"Could not read the registry: {exc}"}
+    if service is None:
+        target = f"name '{name}'" if name else f"npub {npub[:16]}…"
+        return {"success": False, "error": f"No service found for {target}."}
+    return {"success": True, "service": service}
 
 
 # --- Citizenship onboarding tools ---

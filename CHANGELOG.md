@@ -5,6 +5,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+- bootstrap: new read-only tools `get_relays`, `resolve_authority_for(npub)`, and `resolve_service(name|npub)` so an Operator can answer community questions with one MCP call instead of reading GitHub directly. Operators are nsec-only and must never touch the dpyc-community registry themselves — the Oracle is the one GitHub reader. `get_relays` serves `relays.json`; `resolve_authority_for` returns an operator's certifying Authority; `resolve_service` returns `{npub,url,name,role,purchase_mode}`. This closes the fleet-wide bootstrap SPOF where a GitHub-raw 429 stranded cold-starting operators (schwab-mcp, 2026-08-17).
+- resilience: `CommunityRegistry` now prefers the authenticated GitHub contents API when a token is present (5,000 req/hr) and serves last-known-good on refresh failure with a short backoff, so a GitHub hiccup degrades to slightly-stale answers instead of failing closed — the same fail-closed behavior that took operators offline.
 - ecosystem: add `cypher-mcp` (monetized graph answers — named Cypher over Neo4j/AuraDB) to `ECOSYSTEM_LINKS` and the README "Related Repos" Operators list. The newcomer Operator was absent from the Oracle's static roster; the concierge now points at it alongside the other live services.
 
 ## 0.2.15 — 2026-08-10
