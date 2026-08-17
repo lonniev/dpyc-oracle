@@ -158,3 +158,112 @@ async def test_http_error_raises_registry_error(registry):
     ):
         with pytest.raises(RegistryError, match="Failed to fetch"):
             await registry.get_members()
+
+
+# --- Bootstrap-support resolvers ------------------------------------------
+
+CHAIN_MEMBERS = {
+    "members": [
+        {
+            "npub": "npub1prime",
+            "role": "prime_authority",
+            "status": "active",
+            "display_name": "Prime",
+            "services": [{"name": "dpyc-oracle", "url": "https://oracle/mcp"}],
+        },
+        {
+            "npub": "npub1auth",
+            "role": "authority",
+            "status": "active",
+            "display_name": "NorthAmerica",
+            "upstream_authority_npub": "npub1prime",
+            "services": [{"name": "authority", "url": "https://auth/mcp"}],
+        },
+        {
+            "npub": "npub1op",
+            "role": "operator",
+            "status": "active",
+            "display_name": "Excalibur",
+            "upstream_authority_npub": "npub1auth",
+            "services": [{"name": "excalibur", "url": "https://excalibur/mcp"}],
+        },
+    ]
+}
+
+SAMPLE_RELAYS = {
+    "relays": [
+        {"url": "wss://relay.primal.net", "primary": True},
+        {"url": "wss://nos.lol"},
+        "wss://relay.damus.io",
+        {"url": "https://not-a-relay"},
+    ]
+}
+
+
+@pytest.mark.asyncio
+async def test_get_relays_primary_first_and_filtered(registry):
+    with patch.object(
+        registry._client, "get", return_value=_mock_response(json_data=SAMPLE_RELAYS)
+    ):
+        relays = await registry.get_relays()
+    assert relays[0] == "wss://relay.primal.net"  # primary hoisted
+    assert "wss://nos.lol" in relays and "wss://relay.damus.io" in relays
+    assert all(r.startswith("wss://") for r in relays)  # http entry dropped
+
+
+@pytest.mark.asyncio
+async def test_resolve_authority_for_operator(registry):
+    with patch.object(
+        registry._client, "get", return_value=_mock_response(json_data=CHAIN_MEMBERS)
+    ):
+        auth = await registry.resolve_authority_for("npub1op")
+    assert auth == {"npub": "npub1auth", "url": "https://auth/mcp", "name": "authority"}
+
+
+@pytest.mark.asyncio
+async def test_resolve_authority_for_trust_root_is_none(registry):
+    with patch.object(
+        registry._client, "get", return_value=_mock_response(json_data=CHAIN_MEMBERS)
+    ):
+        assert await registry.resolve_authority_for("npub1prime") is None
+
+
+@pytest.mark.asyncio
+async def test_purchase_mode_certified_vs_direct(registry):
+    with patch.object(
+        registry._client, "get", return_value=_mock_response(json_data=CHAIN_MEMBERS)
+    ):
+        # operator under a non-Prime Authority pays up → certified
+        assert await registry.purchase_mode("npub1op") == "certified"
+        # Authority whose parent is Prime self-funds → direct
+        assert await registry.purchase_mode("npub1auth") == "direct"
+        # trust root → direct; unknown npub fails safe → direct
+        assert await registry.purchase_mode("npub1prime") == "direct"
+        assert await registry.purchase_mode("npub1ghost") == "direct"
+
+
+@pytest.mark.asyncio
+async def test_resolve_service_by_name_and_npub(registry):
+    with patch.object(
+        registry._client, "get", return_value=_mock_response(json_data=CHAIN_MEMBERS)
+    ):
+        by_name = await registry.resolve_service(name="excalibur")
+        by_npub = await registry.resolve_service(npub="npub1op")
+    assert by_name["url"] == "https://excalibur/mcp"
+    assert by_name["role"] == "operator"
+    assert by_name["purchase_mode"] == "certified"
+    assert by_npub["name"] == "excalibur"
+    assert await registry.resolve_service(name="ghost") is None
+
+
+@pytest.mark.asyncio
+async def test_stale_served_on_refresh_failure(registry):
+    """A failed refresh serves the last-known-good copy instead of failing closed."""
+    registry._ttl = 0  # force a refresh on every call
+    ok = _mock_response(json_data=SAMPLE_MEMBERS)
+    boom = _mock_response(status_code=500)
+    with patch.object(registry._client, "get", AsyncMock(side_effect=[ok, boom])):
+        first = await registry.get_members()  # populates cache
+        second = await registry.get_members()  # refresh fails → serve stale
+    assert first == second
+    assert second[0]["npub"] == "npub1alice"
