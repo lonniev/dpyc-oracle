@@ -2,7 +2,7 @@
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.lonniev/dpyc-oracle",
   "description": "DPYC Social Contract community concierge — free MCP for membership, governance, and onboarding",
-  "version": "0.2.15",
+  "version": "0.2.16",
   "repository": {
     "url": "https://github.com/lonniev/dpyc-oracle",
     "source": "github"
