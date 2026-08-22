@@ -950,3 +950,197 @@ async def test_commit_advocate_cache_update_failure_is_non_fatal():
 
     # Registry cache is still invalidated
     registry.invalidate_cache.assert_called_once()
+
+
+# -- Measured relay ordering & failure reports ------------------------------
+
+RELAY_SET = ["wss://relay.primal.net", "wss://relay.damus.io", "wss://nos.lol"]
+
+
+def _signed_report(keys: Keys, content: str) -> str:
+    return EventBuilder(Kind(1), content).finalize(keys).as_json()
+
+
+@pytest.fixture
+def _relay_registry(mock_registry):
+    from dpyc_oracle import relay_health
+    mock_registry.get_relays = AsyncMock(return_value=list(RELAY_SET))
+    relay_health._demotions.clear()
+    yield mock_registry
+    relay_health._demotions.clear()
+
+
+@pytest.mark.asyncio
+async def test_get_relays_never_probes(_relay_registry):
+    """The read path is every operator's cold start. It must not survey relays."""
+    from dpyc_oracle import relay_health
+
+    with patch.object(
+        relay_health, "probe_relay", AsyncMock(side_effect=AssertionError("probed!")),
+    ):
+        result = await server_module.get_relays()
+
+    assert result["success"] is True
+    assert result["relays"] == RELAY_SET
+    assert result["ordering"] == "declared"
+
+
+@pytest.mark.asyncio
+async def test_get_relays_demotes_a_relay_proven_dead(_relay_registry):
+    """The outage that motivated this: a dead relay must not be handed out first."""
+    from dpyc_oracle import relay_health
+
+    relay_health.apply_probe({
+        "relay": "wss://relay.primal.net", "alive": False,
+        "latency_ms": 900, "detail": "RelayStatus.TERMINATED",
+    })
+    result = await server_module.get_relays()
+
+    assert result["relays"][0] == "wss://relay.damus.io"
+    assert result["relays"][-1] == "wss://relay.primal.net"
+    assert result["ordering"] == "demoted"
+    # Never dropped — a relay we cannot reach may work from another network.
+    assert sorted(result["relays"]) == sorted(RELAY_SET)
+
+
+@pytest.mark.asyncio
+async def test_get_relays_falls_back_to_declared_order_when_ranking_breaks(_relay_registry):
+    """Ranking is an optimisation; it must never take bootstrap down with it."""
+    from dpyc_oracle import relay_health
+
+    with patch.object(relay_health, "demotions", side_effect=RuntimeError("boom")):
+        result = await server_module.get_relays()
+
+    assert result["success"] is True
+    assert result["relays"] == RELAY_SET
+    assert result["ordering"] == "declared"
+
+
+@pytest.mark.asyncio
+async def test_report_rejects_a_relay_outside_the_curated_set(_relay_registry):
+    """Not a probe-anything primitive aimed at arbitrary hosts."""
+    keys = Keys.generate()
+    result = await server_module.report_relay_failure(
+        relay="wss://evil.example",
+        reporter_npub=keys.public_key().to_bech32(),
+        signed_event=_signed_report(keys, "wss://evil.example is down"),
+    )
+    assert result["success"] is False
+    assert "not in the DPYC relay set" in result["error"]
+
+
+@pytest.mark.asyncio
+async def test_report_rejects_a_signature_from_someone_else(_relay_registry):
+    signer = Keys.generate()
+    other = Keys.generate()
+    result = await server_module.report_relay_failure(
+        relay="wss://nos.lol",
+        reporter_npub=other.public_key().to_bech32(),
+        signed_event=_signed_report(signer, "wss://nos.lol is down"),
+    )
+    assert result["success"] is False
+    assert "does not match reporter_npub" in result["error"]
+
+
+@pytest.mark.asyncio
+async def test_report_requires_the_relay_to_be_named_in_the_signature(_relay_registry):
+    """Otherwise one signed blob could be replayed against any relay."""
+    keys = Keys.generate()
+    result = await server_module.report_relay_failure(
+        relay="wss://nos.lol",
+        reporter_npub=keys.public_key().to_bech32(),
+        signed_event=_signed_report(keys, "something else entirely"),
+    )
+    assert result["success"] is False
+    assert "must name the relay" in result["error"]
+
+
+@pytest.mark.asyncio
+async def test_report_from_a_non_member_is_ignored_not_errored(_relay_registry):
+    keys = Keys.generate()
+    _relay_registry.lookup_member = AsyncMock(return_value=None)
+    result = await server_module.report_relay_failure(
+        relay="wss://nos.lol",
+        reporter_npub=keys.public_key().to_bech32(),
+        signed_event=_signed_report(keys, "wss://nos.lol is down"),
+    )
+    assert result["success"] is True
+    assert result["accepted"] is False
+
+
+@pytest.mark.asyncio
+async def test_the_probe_overrides_a_false_report(_relay_registry):
+    """A member reports a healthy relay as down; the Oracle's own probe wins."""
+    from dpyc_oracle import relay_health
+
+    keys = Keys.generate()
+    _relay_registry.lookup_member = AsyncMock(return_value={"npub": "x", "role": "operator"})
+    healthy = {"relay": "wss://nos.lol", "alive": True, "latency_ms": 30,
+               "detail": "served 1 event(s)"}
+
+    with patch.object(relay_health, "probe_relay", AsyncMock(return_value=healthy)):
+        result = await server_module.report_relay_failure(
+            relay="wss://nos.lol",
+            reporter_npub=keys.public_key().to_bech32(),
+            signed_event=_signed_report(keys, "wss://nos.lol is down"),
+        )
+
+    assert result["accepted"] is True
+    assert result["probed"] == "alive"
+    assert result["agreed_with_report"] is False
+    # The false report changed nothing: no demotion, declared order intact.
+    assert result["order_changed"] is False
+    assert result["relays"] == RELAY_SET
+
+
+@pytest.mark.asyncio
+async def test_a_confirmed_report_demotes_the_relay(_relay_registry):
+    """The whole loop: member reports, Oracle agrees, order changes."""
+    from dpyc_oracle import relay_health
+
+    keys = Keys.generate()
+    _relay_registry.lookup_member = AsyncMock(return_value={"npub": "x", "role": "operator"})
+    down = {"relay": "wss://relay.primal.net", "alive": False, "latency_ms": 900,
+            "detail": "RelayStatus.TERMINATED"}
+
+    with patch.object(relay_health, "probe_relay", AsyncMock(return_value=down)):
+        result = await server_module.report_relay_failure(
+            relay="wss://relay.primal.net",
+            reporter_npub=keys.public_key().to_bech32(),
+            signed_event=_signed_report(keys, "wss://relay.primal.net unreachable"),
+            mode="send",
+        )
+
+    assert result["probed"] == "unreachable"
+    assert result["agreed_with_report"] is True
+    assert result["order_changed"] is True
+    assert result["relays"][-1] == "wss://relay.primal.net"
+
+    # And the demotion is visible to the next reader, with no probing.
+    with patch.object(
+        relay_health, "probe_relay", AsyncMock(side_effect=AssertionError("probed!")),
+    ):
+        served = await server_module.get_relays()
+    assert served["relays"][-1] == "wss://relay.primal.net"
+
+
+@pytest.mark.asyncio
+async def test_a_stale_signature_is_refused(_relay_registry):
+    """One signed blob must not be replayable forever."""
+    import time as _time
+
+    from nostr_sdk import Timestamp
+
+    keys = Keys.generate()
+    old = (
+        EventBuilder(Kind(1), "wss://nos.lol is down")
+        .custom_created_at(Timestamp.from_secs(int(_time.time()) - 4000))
+        .finalize(keys)
+    )
+    result = await server_module.report_relay_failure(
+        relay="wss://nos.lol",
+        reporter_npub=keys.public_key().to_bech32(),
+        signed_event=old.as_json(),
+    )
+    assert result["success"] is False
+    assert "signed within" in result["error"]
