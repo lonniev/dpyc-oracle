@@ -15,7 +15,7 @@ import httpx
 from fastmcp import Client, FastMCP
 from nostr_sdk import Event, PublicKey
 
-from dpyc_oracle import __version__
+from dpyc_oracle import __version__, relay_health
 from dpyc_oracle.config import OracleSettings
 from dpyc_oracle.registry import CommunityRegistry
 
@@ -745,6 +745,9 @@ async def service_status() -> dict:
 
 # -- Live service self-description probe (MCP-to-MCP) -----------------------
 
+# Replay window for a signed relay-failure report.
+_REPORT_MAX_AGE_SECONDS = 300
+
 _PROBE_TTL_SECONDS = 300
 _PROBE_TIMEOUT_SECONDS = 6.0
 _INSTRUCTIONS_EXCERPT_CHARS = 600
@@ -922,19 +925,173 @@ async def list_services(probe: bool = True, kind: str = "all") -> dict:
 
 @mcp.tool()
 async def get_relays() -> dict:
-    """Return the DPYC Nostr relay set (primary-first).
+    """Return the DPYC Nostr relay set, best first.
 
     The single source of truth is ``dpyc-community/relays.json``. An Operator
     seeds its relay set from here at cold start (its only fixed dependency is
     this Oracle endpoint), then reads its own bootstrap config from Nostr using
     just its nsec — no direct GitHub access.
+
+    That file is a curated *guess*: it says which relays are worth using, not
+    which are up this minute. Relays that an operator reported and the Oracle
+    then proved unreachable are moved to the back of the list; everything else
+    keeps its declared order, and nothing is ever dropped.
+
+    This call never probes anything — it is on every operator's cold-start
+    path, so it stays a lookup. Ranking improves only when someone hits a dead
+    relay and says so via ``report_relay_failure``. Report failures only;
+    successes need no announcement.
+
+    Free.
     """
     _, registry = _ensure_initialized()
     try:
-        relays = await registry.get_relays()
+        declared = await registry.get_relays()
     except Exception as exc:  # noqa: BLE001
         return {"success": False, "error": f"Could not read relays.json: {exc}"}
-    return {"success": True, "relays": relays, "count": len(relays)}
+
+    # The declared order is a good guess; it just cannot know what is up right
+    # now. Relays proven unreachable by an earlier report are moved to the
+    # back. This path NEVER probes — it is on every operator's cold-start
+    # critical path, and a working fleet must not wait behind a survey.
+    try:
+        demoted = relay_health.demotions()
+        relays = relay_health.order_by_health(declared)
+    except Exception as exc:  # noqa: BLE001 — ranking must never break bootstrap
+        logger.warning("Relay demotion lookup failed (%s); serving declared order.", exc)
+        demoted, relays = {}, declared
+
+    return {
+        "success": True,
+        "relays": relays,
+        "count": len(relays),
+        "ordering": "demoted" if demoted else "declared",
+        "demoted": {
+            url: {"detail": r.get("detail"), "latency_ms": r.get("latency_ms")}
+            for url, r in demoted.items()
+        },
+    }
+
+
+@mcp.tool()
+async def report_relay_failure(
+    relay: str,
+    reporter_npub: str,
+    signed_event: str,
+    mode: str = "unknown",
+) -> dict:
+    """Report that a relay in the DPYC set was unreachable, and re-rank it.
+
+    A report does not set a relay's rank. It asks the Oracle to measure that
+    relay *now*, and the Oracle's own probe decides. A false or mistaken
+    report therefore costs one probe and changes nothing — no caller can
+    demote a healthy relay by asserting that it is down.
+
+    Report only failures. Successes are far too frequent to be worth
+    carrying, and a relay that works needs no announcement.
+
+    Args:
+        relay: The relay that failed. Must already be in the DPYC set —
+            this tool re-measures the curated set, it is not a probe-anything
+            primitive that can be aimed at arbitrary hosts.
+        reporter_npub: The reporting operator's npub.
+        signed_event: A Nostr event signed by ``reporter_npub`` whose content
+            contains the relay URL, created within the last few minutes.
+            Stateless by design: no challenge is issued first, because a
+            challenge store would not survive this service's recycles — and
+            a relay report is most needed exactly when relays are broken.
+        mode: What was being attempted — ``"send"``, ``"read"``, or
+            ``"unknown"``. Recorded for the human reading the logs.
+
+    Free.
+    """
+    _, registry = _ensure_initialized()
+
+    # 1. The relay must be one we curate.
+    try:
+        declared = await registry.get_relays()
+    except Exception as exc:  # noqa: BLE001
+        return {"success": False, "error": f"Could not read relays.json: {exc}"}
+    if relay not in declared:
+        return {
+            "success": False,
+            "error": (
+                f"{relay} is not in the DPYC relay set, so there is nothing to "
+                "re-rank. Ordering applies only to curated relays; adding one "
+                "is a PR against dpyc-community/relays.json."
+            ),
+        }
+
+    # 2. The reporter must have signed the report.
+    try:
+        event = Event.from_json(signed_event)
+    except Exception as exc:  # noqa: BLE001
+        return {"success": False, "error": f"Failed to parse signed event JSON: {exc}"}
+    try:
+        event.verify()
+    except Exception as exc:  # noqa: BLE001
+        return {"success": False, "error": f"Schnorr signature verification failed: {exc}"}
+    try:
+        claimed_pk = _validate_npub(reporter_npub)
+    except Exception as exc:  # noqa: BLE001
+        return {"success": False, "error": f"Invalid reporter_npub: {exc}"}
+    if event.author().to_hex() != claimed_pk.to_hex():
+        return {
+            "success": False,
+            "error": "Event pubkey does not match reporter_npub.",
+        }
+    if relay not in event.content():
+        return {
+            "success": False,
+            "error": "The signed event's content must name the relay being reported.",
+        }
+    # Bind the signature to a moment, so one report cannot be replayed forever.
+    age = abs(time.time() - event.created_at().as_secs())
+    if age > _REPORT_MAX_AGE_SECONDS:
+        return {
+            "success": False,
+            "error": (
+                f"The signed event is {int(age)}s old; reports must be signed "
+                f"within {_REPORT_MAX_AGE_SECONDS}s of being sent."
+            ),
+        }
+
+    # 3. Members report; strangers are ignored rather than errored — an
+    #    unknown npub is not a fault, it just carries no weight.
+    member = await registry.lookup_member(reporter_npub)
+    if member is None:
+        logger.info("Ignoring relay report for %s from non-member %s", relay, reporter_npub[:16])
+        return {
+            "success": True,
+            "relay": relay,
+            "accepted": False,
+            "note": (
+                "Not a registered DPYC member, so this report was not acted on. "
+                "Ordering still reflects the Oracle's own measurements."
+            ),
+        }
+
+    # 4. Measure it ourselves. This, not the report, sets the rank.
+    before = relay_health.order_by_health(declared)
+    result = await relay_health.probe_relay(relay)
+    relay_health.apply_probe(result)
+    after = relay_health.order_by_health(declared)
+
+    logger.info(
+        "Relay report: %s reported %s (%s); probe says alive=%s",
+        reporter_npub[:16], relay, mode, result["alive"],
+    )
+    return {
+        "success": True,
+        "relay": relay,
+        "accepted": True,
+        "reported_mode": mode,
+        "probed": "alive" if result["alive"] else "unreachable",
+        "probe_detail": result.get("detail"),
+        "agreed_with_report": not result["alive"],
+        "order_changed": before != after,
+        "relays": after,
+    }
 
 
 @mcp.tool()

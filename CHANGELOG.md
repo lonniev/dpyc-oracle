@@ -3,6 +3,50 @@
 All notable changes to this project will be documented in this file.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.3.0 — 2026-08-22
+
+### Added — the relay set is a guess the fleet can correct
+
+`relays.json` declared `relay.primal.net` primary with the note "high uptime".
+On 2026-08-22 primal was 0/6 reachable and `relay.nostr.band` 0/6, while
+`nos.lol` was 6/6. The Oracle hands its order to every operator, each pins its
+Secure Courier rendezvous to the first entry, and a rendezvous pinned to a dead
+relay fails as `courier_not_found` — an error that blames the patron for not
+replying. A curated list cannot know what is up this minute.
+
+So the declared order stays the starting guess, and the fleet corrects it with
+negative feedback only.
+
+- New `report_relay_failure(relay, reporter_npub, signed_event, mode)`. A report
+  does not set rank. It asks the Oracle to probe that one relay, and the
+  Oracle's own measurement decides — so a mistaken or malicious report costs one
+  probe and changes nothing. The relay must already be in the curated set, so
+  this is not a probe-anything primitive aimed at arbitrary hosts. The reporter
+  signs an event naming the relay, verified Schnorr-style like
+  `confirm_citizenship`, and stateless by design: no challenge is issued first,
+  because a challenge store would not survive a recycle and a relay report is
+  needed exactly when relays are broken. Non-members are ignored, not errored.
+- `get_relays()` moves proven-dead relays to the back and is otherwise
+  unchanged. **It never probes.** It is on every operator's cold-start critical
+  path, and a working fleet must not wait behind a survey it did not ask for —
+  reads stay a 0 ms lookup. Response gains `ordering` and `demoted`; `relays`
+  keeps its shape, so existing clients are unaffected.
+- Ranking only ever **demotes**. A healthy probe clears a demotion rather than
+  promoting the relay, so `relays.json` remains the expression of judgement
+  about the set and measurement only ever says "not this one, not now".
+- Recovery needs no success reports — those are far too frequent to carry, and
+  a relay that works needs no announcement. A demotion carries a TTL and decays
+  on its own: a genuinely dead relay keeps being reported and re-demoted, while
+  a recovered one ages back into its declared slot and gets another chance.
+- New `relay_health` module. Probes are connect + `REQ`→`EOSE`, because
+  accepting a socket is not the same as serving, and retried once so a flaky
+  relay is not demoted on one unlucky connect. Built on the existing
+  `nostr-sdk` dependency; nothing new was added.
+
+Demotions live in memory and are lost on recycle. That is acceptable precisely
+because rank is derived rather than accumulated: a recycle costs one more
+report round, not knowledge that cannot be rebuilt.
+
 ## 0.2.16 — 2026-08-17
 
 - bootstrap: new read-only tools `get_relays`, `resolve_authority_for(npub)`, and `resolve_service(name|npub)` so an Operator can answer community questions with one MCP call instead of reading GitHub directly. Operators are nsec-only and must never touch the dpyc-community registry themselves — the Oracle is the one GitHub reader. `get_relays` serves `relays.json`; `resolve_authority_for` returns an operator's certifying Authority; `resolve_service` returns `{npub,url,name,role,purchase_mode}`. This closes the fleet-wide bootstrap SPOF where a GitHub-raw 429 stranded cold-starting operators (schwab-mcp, 2026-08-17).
