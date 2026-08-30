@@ -1,6 +1,13 @@
 {
   "name": "DPYC Oracle",
-  "server": "src/dpyc_oracle/server.py",
+  "source": {
+    "path": "src/dpyc_oracle/server.py",
+    "entrypoint": "mcp"
+  },
+  "environment": {
+    "type": "uv",
+    "project": "."
+  },
   "deployment": {
     "env": {
       "DPYC_COMMUNITY_BASE_URL": "https://raw.githubusercontent.com/lonniev/dpyc-community/main",
