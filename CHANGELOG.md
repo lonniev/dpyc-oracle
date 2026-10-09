@@ -3,6 +3,8 @@
 All notable changes to this project will be documented in this file.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+Changes not yet released live in `changelog.d/`, one file per change — see the README there for why, and `scripts/changelog.py` for what folds them in at release time.
+
 ## 0.3.0 — 2026-08-22
 
 ### Added — the relay set is a guess the fleet can correct
@@ -190,4 +192,3 @@ release. This entry closes that gap going forward; the earlier sections remain a
 - Merge pull request #1 from lonniev/feat/initial-scaffold
 - Scaffold DPYC Oracle MCP service
 - Initial commit
-
