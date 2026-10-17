@@ -1,0 +1,1 @@
+- `list_services` probes members with `Authorization: Bearer anonymous`, so operators with tollbooth-dpyc holder bearer on answer the handshake instead of a 401.

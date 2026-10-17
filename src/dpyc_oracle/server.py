@@ -775,7 +775,9 @@ async def _probe_service(url: str) -> dict:
         return cached[0]
 
     async def _handshake() -> dict:
-        async with Client(url) as client:
+        # A member with holder bearer on refuses a request with no bearer;
+        # the probe is an anonymous caller.
+        async with Client(url, auth="anonymous") as client:
             init = client.initialize_result
             server_info = getattr(init, "serverInfo", None)
             instructions = getattr(init, "instructions", None) or ""
