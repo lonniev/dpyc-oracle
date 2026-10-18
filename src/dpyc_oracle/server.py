@@ -9,11 +9,12 @@ import platform
 import secrets
 import time
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import httpx
 from fastmcp import Client, FastMCP
 from nostr_sdk import Event, PublicKey
+from tollbooth.holder_auth import SignedRequestProvider, signed_npub
 
 from dpyc_oracle import __version__, relay_health
 from dpyc_oracle.config import OracleSettings
@@ -136,6 +137,25 @@ def _prune_expired_challenges() -> None:
         del _challenges[k]
 
 
+def _signed_by(npub: str) -> bool:
+    """True when the request in flight was signed with ``npub``'s key."""
+    signer = signed_npub()
+    return signer is not None and PublicKey.parse(signer).to_hex() == PublicKey.parse(npub).to_hex()
+
+
+def _not_signed_by(authority_npub: str) -> dict | None:
+    """The refusal for a registry write the named Authority did not sign."""
+    if _signed_by(authority_npub):
+        return None
+    return {
+        "success": False,
+        "error": (
+            f"Only Authority {authority_npub[:16]}... may make this change: the "
+            "request must be signed with its key."
+        ),
+    }
+
+
 def _validate_npub(npub: str) -> PublicKey:
     """Parse and validate an npub string. Raises ValueError on failure."""
     if not npub.startswith("npub1"):
@@ -176,7 +196,7 @@ async def _commit_membership(
     curator = await registry.get_first_curator()
     upstream_npub = curator["npub"] if curator else None
 
-    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    today = datetime.now(UTC).strftime("%Y-%m-%d")
     npub_short = npub[:16]
     new_member = {
         "npub": npub,
@@ -232,7 +252,7 @@ async def _commit_authority(
         "Accept": "application/vnd.github+json",
     }
 
-    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    today = datetime.now(UTC).strftime("%Y-%m-%d")
     npub_short = authority_npub[:16]
     new_member = {
         "npub": authority_npub,
@@ -294,7 +314,7 @@ async def _commit_operator(
         "Accept": "application/vnd.github+json",
     }
 
-    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    today = datetime.now(UTC).strftime("%Y-%m-%d")
     npub_short = operator_npub[:16]
     new_member = {
         "npub": operator_npub,
@@ -363,7 +383,7 @@ async def _commit_advocate(
     curator = await registry.get_first_curator()
     upstream_npub = curator["npub"] if curator else None
 
-    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    today = datetime.now(UTC).strftime("%Y-%m-%d")
     npub_short = npub[:16]
     new_member = {
         "npub": npub,
@@ -404,7 +424,7 @@ async def _commit_advocate(
             cache_data = json.loads(existing_bytes)
 
             cache_data.setdefault("members", []).append(new_member)
-            cache_data["updated_at"] = datetime.now(timezone.utc).strftime(
+            cache_data["updated_at"] = datetime.now(UTC).strftime(
                 "%Y-%m-%dT%H:%M:%SZ"
             )
 
@@ -442,7 +462,10 @@ async def _commit_advocate(
         return advocate_url
 
 
-mcp = FastMCP("dpyc-oracle", instructions=INSTRUCTIONS)
+# A request signed with an npub's key (NIP-98) proves that npub; every other
+# request is anonymous, so the free tools stay free. Registry writes check the
+# signer (``_signed_by_authority``).
+mcp = FastMCP("dpyc-oracle", instructions=INSTRUCTIONS, auth=SignedRequestProvider())
 
 
 @mcp.tool()
@@ -806,7 +829,7 @@ async def _probe_service(url: str) -> dict:
 
     try:
         result = await asyncio.wait_for(_handshake(), _PROBE_TIMEOUT_SECONDS)
-    except (asyncio.TimeoutError, TimeoutError):
+    except TimeoutError:
         result = {
             "probe_status": "timeout",
             "note": (
@@ -1460,9 +1483,8 @@ async def register_operator(
 ) -> dict:
     """Register a new Operator in the DPYC community registry.
 
-    Called by an Authority service after the operator requests registration.
-    The Authority validates the operator's identity and sponsors the
-    registration by calling this tool via MCP-to-MCP.
+    Called by an Authority service when its owner approves an operator's
+    adoption request; the request must be signed with the Authority's key.
 
     Parameters:
         operator_npub: Nostr npub of the new Operator.
@@ -1488,6 +1510,8 @@ async def register_operator(
         _validate_npub(authority_npub)
     except (ValueError, Exception) as exc:
         return {"success": False, "error": f"Invalid authority_npub: {exc}"}
+    if refusal := _not_signed_by(authority_npub):
+        return refusal
 
     settings, registry = _ensure_initialized()
 
@@ -1619,15 +1643,16 @@ async def _update_operator_file(
 @mcp.tool()
 async def update_operator(
     operator_npub: str,
+    authority_npub: str,
     service_url: str = "",
     display_name: str = "",
-    authority_npub: str = "",
 ) -> dict:
     """Update an existing Operator's registry entry.
 
-    Used when an Operator moves to a new MCP endpoint, changes its
-    display name, or needs to correct a registration.  Must be called
-    by the sponsoring Authority (or any Authority).
+    Used when an Operator moves to a new MCP endpoint, changes its display
+    name, or needs to correct a registration. Called by an Authority when its
+    owner approves the operator's update request; the request must be signed
+    with that Authority's key.
 
     Parameters:
         operator_npub: Nostr npub of the Operator to update.
@@ -1641,11 +1666,12 @@ async def update_operator(
     except (ValueError, Exception) as exc:
         return {"success": False, "error": f"Invalid operator_npub: {exc}"}
 
-    if authority_npub:
-        try:
-            _validate_npub(authority_npub)
-        except (ValueError, Exception) as exc:
-            return {"success": False, "error": f"Invalid authority_npub: {exc}"}
+    try:
+        _validate_npub(authority_npub)
+    except (ValueError, Exception) as exc:
+        return {"success": False, "error": f"Invalid authority_npub: {exc}"}
+    if refusal := _not_signed_by(authority_npub):
+        return refusal
 
     if not service_url and not display_name:
         return {
@@ -1655,14 +1681,12 @@ async def update_operator(
 
     settings, registry = _ensure_initialized()
 
-    # Verify Authority if provided
-    if authority_npub:
-        upstream = await registry.lookup_member(authority_npub)
-        if upstream is None or upstream.get("role") not in ("prime_authority", "authority"):
-            return {
-                "success": False,
-                "error": f"Authority {authority_npub[:16]}... not found or lacks authority role.",
-            }
+    upstream = await registry.lookup_member(authority_npub)
+    if upstream is None or upstream.get("role") not in ("prime_authority", "authority"):
+        return {
+            "success": False,
+            "error": f"Authority {authority_npub[:16]}... not found or lacks authority role.",
+        }
 
     # Verify operator exists
     existing = await registry.lookup_member(operator_npub)
@@ -1749,9 +1773,11 @@ async def deregister_operator(
 ) -> dict:
     """Remove an Operator from the DPYC community registry.
 
-    Called when an Authority disowns an Operator.  An Operator cannot
-    exist without a sponsoring Authority, so deregistration removes the
-    member file entirely, returning the Operator to initial state.
+    Called by an Authority when the operator leaves it or the Authority
+    disowns the operator; the request must be signed with the Authority's
+    key. An Operator cannot exist without a sponsoring Authority, so
+    deregistration removes the member file entirely, returning the Operator
+    to initial state.
 
     Parameters:
         operator_npub: Nostr npub of the Operator to remove.
@@ -1767,6 +1793,8 @@ async def deregister_operator(
         _validate_npub(authority_npub)
     except (ValueError, Exception) as exc:
         return {"success": False, "error": f"Invalid authority_npub: {exc}"}
+    if refusal := _not_signed_by(authority_npub):
+        return refusal
 
     settings, registry = _ensure_initialized()
 
