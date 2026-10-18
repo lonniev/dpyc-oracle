@@ -14,11 +14,11 @@ from datetime import datetime, timezone
 import httpx
 from fastmcp import Client, FastMCP
 from nostr_sdk import Event, PublicKey
+from tollbooth.holder_auth import SignedRequestProvider, signed_npub
 
 from dpyc_oracle import __version__, relay_health
 from dpyc_oracle.config import OracleSettings
 from dpyc_oracle.registry import CommunityRegistry
-from tollbooth.holder_auth import SignedRequestProvider, signed_npub
 
 logger = logging.getLogger(__name__)
 
