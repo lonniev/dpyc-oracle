@@ -9,7 +9,7 @@ import platform
 import secrets
 import time
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import httpx
 from fastmcp import Client, FastMCP
@@ -196,7 +196,7 @@ async def _commit_membership(
     curator = await registry.get_first_curator()
     upstream_npub = curator["npub"] if curator else None
 
-    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    today = datetime.now(UTC).strftime("%Y-%m-%d")
     npub_short = npub[:16]
     new_member = {
         "npub": npub,
@@ -252,7 +252,7 @@ async def _commit_authority(
         "Accept": "application/vnd.github+json",
     }
 
-    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    today = datetime.now(UTC).strftime("%Y-%m-%d")
     npub_short = authority_npub[:16]
     new_member = {
         "npub": authority_npub,
@@ -314,7 +314,7 @@ async def _commit_operator(
         "Accept": "application/vnd.github+json",
     }
 
-    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    today = datetime.now(UTC).strftime("%Y-%m-%d")
     npub_short = operator_npub[:16]
     new_member = {
         "npub": operator_npub,
@@ -383,7 +383,7 @@ async def _commit_advocate(
     curator = await registry.get_first_curator()
     upstream_npub = curator["npub"] if curator else None
 
-    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    today = datetime.now(UTC).strftime("%Y-%m-%d")
     npub_short = npub[:16]
     new_member = {
         "npub": npub,
@@ -424,7 +424,7 @@ async def _commit_advocate(
             cache_data = json.loads(existing_bytes)
 
             cache_data.setdefault("members", []).append(new_member)
-            cache_data["updated_at"] = datetime.now(timezone.utc).strftime(
+            cache_data["updated_at"] = datetime.now(UTC).strftime(
                 "%Y-%m-%dT%H:%M:%SZ"
             )
 
@@ -829,7 +829,7 @@ async def _probe_service(url: str) -> dict:
 
     try:
         result = await asyncio.wait_for(_handshake(), _PROBE_TIMEOUT_SECONDS)
-    except (asyncio.TimeoutError, TimeoutError):
+    except TimeoutError:
         result = {
             "probe_status": "timeout",
             "note": (

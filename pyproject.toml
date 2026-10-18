@@ -8,7 +8,7 @@ version = "0.3.0"
 description = "DPYC Social Contract community concierge — free MCP service for membership, governance, and onboarding"
 readme = "README.md"
 license = "Apache-2.0"
-requires-python = ">=3.10"
+requires-python = ">=3.12"
 authors = [
     { name = "Lonnie VanZandt" },
 ]
@@ -33,7 +33,7 @@ packages = ["src/dpyc_oracle"]
 
 [tool.ruff]
 line-length = 100
-target-version = "py310"
+target-version = "py312"
 
 # An explicit rule set, matching excalibur-mcp and thebrain-mcp. This repo had no
 # ruff configuration at all and so inherited whatever ruff's defaults happened to be
