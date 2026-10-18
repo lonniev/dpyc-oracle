@@ -1,0 +1,1 @@
+- Registry writes for operators (register, update, deregister) are made only by the Authority that signs the request with its key; the free tools stay open to every caller.
