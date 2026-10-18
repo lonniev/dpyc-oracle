@@ -1,0 +1,1 @@
+- The README says the operator registry writes (`register_operator`, `update_operator`, `deregister_operator`) take only a request signed with the sponsoring Authority's key, and gives `update_operator`'s required `authority_npub`.
