@@ -143,14 +143,14 @@ def _signed_by(npub: str) -> bool:
     return signer is not None and PublicKey.parse(signer).to_hex() == PublicKey.parse(npub).to_hex()
 
 
-def _not_signed_by(authority_npub: str) -> dict | None:
-    """The refusal for a registry write the named Authority did not sign."""
-    if _signed_by(authority_npub):
+def _not_signed_by(npub: str, who: str = "Authority") -> dict | None:
+    """The refusal for a registry write that ``npub`` did not sign."""
+    if _signed_by(npub):
         return None
     return {
         "success": False,
         "error": (
-            f"Only Authority {authority_npub[:16]}... may make this change: the "
+            f"Only {who} {npub[:16]}... may make this change: the "
             "request must be signed with its key."
         ),
     }
@@ -1853,9 +1853,9 @@ async def register_advocate(
     infrastructure (e.g., OAuth2 callback collectors) but aren't
     monetized Operators or certification Authorities.
 
-    This is an Oracle-mediated registration — no Nostr DM
-    challenge-response needed. The Oracle operator (Prime Authority)
-    trusts the commit via GitHub token.
+    The request must be signed with ``npub``'s own key (NIP-98): a
+    service registers itself, and no one can register an npub they do
+    not hold.
 
     Parameters:
         npub: Nostr npub of the Advocate service.
@@ -1870,6 +1870,8 @@ async def register_advocate(
         _validate_npub(npub)
     except (ValueError, Exception) as exc:
         return {"success": False, "error": f"Invalid npub: {exc}"}
+    if refusal := _not_signed_by(npub, "Advocate"):
+        return refusal
 
     settings, registry = _ensure_initialized()
 
@@ -2110,7 +2112,9 @@ async def publish_campaign(
     """Publish a pricing campaign to the DPYC community.
 
     Commits both a machine-importable JSON file and a human-readable
-    Markdown summary to the dpyc-community campaigns directory.
+    Markdown summary to the dpyc-community campaigns directory. The
+    request must be signed with ``author_npub``'s key (NIP-98), so a
+    campaign is published only under its author's own name.
 
     Args:
         author_npub: The npub of the person who designed the campaign.
@@ -2120,6 +2124,12 @@ async def publish_campaign(
         campaign_markdown: Optional pre-rendered Markdown. If omitted, the
             Oracle generates a basic summary from the JSON.
     """
+    try:
+        _validate_npub(author_npub)
+    except (ValueError, Exception) as exc:
+        return {"success": False, "error": f"Invalid author_npub: {exc}"}
+    if refusal := _not_signed_by(author_npub, "author"):
+        return refusal
     settings, _ = _ensure_initialized()
     try:
         campaign = json.loads(campaign_json)

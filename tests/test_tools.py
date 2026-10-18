@@ -727,7 +727,7 @@ async def test_register_advocate_success(mock_registry):
         "_commit_advocate",
         new_callable=AsyncMock,
         return_value=f"https://github.com/lonniev/dpyc-community/blob/main/members/advocates/{new_npub}.json",
-    ) as mock_commit:
+    ) as mock_commit, patch.object(server_module, "signed_npub", return_value=new_npub):
         result = await server_module.register_advocate(
             npub=new_npub,
             display_name="OAuth2 Collector",
@@ -759,13 +759,14 @@ async def test_register_advocate_invalid_npub(mock_registry):
 
 @pytest.mark.asyncio
 async def test_register_advocate_already_registered(mock_registry):
-    result = await server_module.register_advocate(
-        npub=ALICE_NPUB,  # Already registered as operator
-        display_name="Alice",
-        service_name="svc",
-        service_url="https://example.com",
-        service_description="desc",
-    )
+    with patch.object(server_module, "signed_npub", return_value=ALICE_NPUB):
+        result = await server_module.register_advocate(
+            npub=ALICE_NPUB,  # Already registered as operator
+            display_name="Alice",
+            service_name="svc",
+            service_url="https://example.com",
+            service_description="desc",
+        )
     assert result["success"] is False
     assert "already registered" in result["error"]
 
@@ -779,7 +780,7 @@ async def test_register_advocate_commit_failure(mock_registry):
         "_commit_advocate",
         new_callable=AsyncMock,
         side_effect=RuntimeError("GitHub token not configured"),
-    ):
+    ), patch.object(server_module, "signed_npub", return_value=new_npub):
         result = await server_module.register_advocate(
             npub=new_npub,
             display_name="Collector",

@@ -1,6 +1,6 @@
 # DPYC Oracle
 
-A free, unauthenticated MCP concierge service for the [DPYC Social Contract](https://github.com/lonniev/dpyc-community). The Oracle answers questions about membership, governance, onboarding, and tax rates by reading the [dpyc-community GitHub registry](https://github.com/lonniev/dpyc-community) live. No credits, no Neon database, no Secure Courier, no payment or credentials required. The three operator registry writes are the exception: each must come on a request signed with the sponsoring Authority's key (see [Operator registry writes](#operator-registry-writes)).
+A free, unauthenticated MCP concierge service for the [DPYC Social Contract](https://github.com/lonniev/dpyc-community). The Oracle answers questions about membership, governance, onboarding, and tax rates by reading the [dpyc-community GitHub registry](https://github.com/lonniev/dpyc-community) live. No credits, no Neon database, no Secure Courier, no payment or credentials required. Registry writes are the exception: each must come on a signed request (see [Signed registry writes](#signed-registry-writes)).
 
 ## Available Tools
 
@@ -20,13 +20,13 @@ A free, unauthenticated MCP concierge service for the [DPYC Social Contract](htt
 | `service_status()` | — | Runtime version diagnostics |
 | `request_citizenship(npub, display_name)` | `npub: str, display_name: str` | Begin citizenship onboarding (issues challenge) |
 | `confirm_citizenship(npub, challenge_id, signed_event_json)` | `npub: str, challenge_id: str, signed_event_json: str` | Complete onboarding with signed Nostr event |
-| `register_advocate(npub, display_name, service_name, service_url, service_description)` | `npub: str, display_name: str, service_name: str, service_url: str, service_description: str` | Register a community utility service as an Advocate |
+| `register_advocate(npub, display_name, service_name, service_url, service_description)` | `npub: str, display_name: str, service_name: str, service_url: str, service_description: str` | Register a community utility service as an Advocate; the request must be signed with `npub`'s own key |
 | `register_authority(authority_npub, display_name, service_url, upstream_authority_npub)` | `authority_npub: str, display_name: str, service_url: str, upstream_authority_npub: str` | Register a new Authority (called by onboarding flow) |
 | `register_operator(operator_npub, display_name, service_url, authority_npub)` | `operator_npub: str, display_name: str, service_url: str, authority_npub: str` | Register a new Operator. Called by the sponsoring Authority when its owner approves an adoption; the request must be signed with `authority_npub`'s key |
 | `update_operator(operator_npub, authority_npub, service_url, display_name)` | `operator_npub: str, authority_npub: str, service_url: str = "", display_name: str = ""` | Update an existing Operator's registry entry (e.g. new MCP endpoint). Called by the Authority when its owner approves the operator's update request; the request must be signed with `authority_npub`'s key |
 | `deregister_operator(operator_npub, authority_npub)` | `operator_npub: str, authority_npub: str` | Remove an Operator from the registry, when the operator leaves its Authority or the Authority disowns it. Called by the Authority; the request must be signed with `authority_npub`'s key |
 | `check_ban_status(npub)` | `npub: str` | Check if an npub is banned |
-| `publish_campaign(author_npub, operator_npub, campaign_json, campaign_name, campaign_markdown)` | `author_npub: str, operator_npub: str, campaign_json: str, campaign_name: str = "", campaign_markdown: str = ""` | Publish a pricing campaign to the DPYC community |
+| `publish_campaign(author_npub, operator_npub, campaign_json, campaign_name, campaign_markdown)` | `author_npub: str, operator_npub: str, campaign_json: str, campaign_name: str = "", campaign_markdown: str = ""` | Publish a pricing campaign to the DPYC community; the request must be signed with `author_npub`'s key |
 | `list_campaigns(operator_npub, author_npub)` | `operator_npub: str = "", author_npub: str = ""` | List published pricing campaigns, optionally filtered by operator or author |
 | `get_campaign(author_npub, operator_npub, slug, format)` | `author_npub: str, operator_npub: str, slug: str, format: str = "json"` | Retrieve a published pricing campaign (JSON or Markdown) |
 
@@ -38,9 +38,13 @@ A free, unauthenticated MCP concierge service for the [DPYC Social Contract](htt
 | `initiate_ban_election(target_npub, reason)` | Start economic ban voting |
 | `cast_ban_vote(election_id, vote, npub)` | Lightning-funded ban vote |
 
-## Operator registry writes
+## Signed registry writes
 
-`register_operator`, `update_operator` and `deregister_operator` change who the network trusts, so the Oracle takes them only from the Authority that sponsors the operator. The request must carry a NIP-98 signature (`Authorization: Nostr <base64 kind-27235>`, bound to the request's method, URL and body) made with the key of the `authority_npub` it names. An unsigned request, or one signed by any other key, is refused. Every other Oracle tool answers with no `Authorization` header at all.
+`register_operator`, `update_operator` and `deregister_operator` change who the network trusts, so the Oracle takes them only from the Authority that sponsors the operator. The request must carry a NIP-98 signature (`Authorization: Nostr <base64 kind-27235>`, bound to the request's method, URL and body) made with the key of the `authority_npub` it names. An unsigned request, or one signed by any other key, is refused.
+
+`register_advocate` and `publish_campaign` take the same NIP-98 signature, made with the key of the npub they write: an Advocate registers itself, and a campaign is published under its author's own npub. Anyone holding a key may do either; no one may do it in another npub's name.
+
+Every other Oracle tool answers with no `Authorization` header at all.
 
 Operators never call these tools themselves. An operator asks its Authority (`request_adoption`, `update_operator` or `deregister_operator` on the Authority), and the Authority makes the signed call here once its owner approves, or at once for a deregistration.
 
