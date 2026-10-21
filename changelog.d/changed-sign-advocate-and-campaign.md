@@ -1,1 +1,0 @@
-- `register_advocate` and `publish_campaign` require a request signed with the key of the npub they write (the Advocate's own npub; the campaign's `author_npub`). Anyone with a key may still do either, only in their own name.

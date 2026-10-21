@@ -5,6 +5,24 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 Changes not yet released live in `changelog.d/`, one file per change — see the README there for why, and `scripts/changelog.py` for what folds them in at release time.
 
+## [0.4.0] — 2026-10-21
+
+### Changed
+
+- Registry writes for operators (register, update, deregister) are made only by the Authority that signs the request with its key; the free tools stay open to every caller.
+
+- The README says the operator registry writes (`register_operator`, `update_operator`, `deregister_operator`) take only a request signed with the sponsoring Authority's key, and gives `update_operator`'s required `authority_npub`.
+
+- The README now matches the code: the tools table adds `resolve_service`, `resolve_authority_for`, `get_relays` and `report_relay_failure` (it now lists every registered tool), the registry cache is named `members/read-only-lookup-cache.json`, peers resolve services through the Oracle since `resolve_service_by_name` is gone, and the related-repo list adds goodearth, beesknees, roastify, ChartRemotely and tollbooth-web.
+
+- Dependencies refreshed to current releases (mcp/fastmcp 1.26.0/3.4.7 → 2.3.0/4.1.0; frontend minor/patch). No service stays on old transitive versions.
+
+- `register_advocate` and `publish_campaign` require a request signed with the key of the npub they write (the Advocate's own npub; the campaign's `author_npub`). Anyone with a key may still do either, only in their own name.
+
+### Fixed
+
+- `list_services` probes members with `Authorization: Bearer anonymous`, so operators with tollbooth-dpyc holder bearer on answer the handshake instead of a 401.
+
 ## 0.3.0 — 2026-08-22
 
 ### Added — the relay set is a guess the fleet can correct
