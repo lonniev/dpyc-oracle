@@ -18,6 +18,10 @@ A free, unauthenticated MCP concierge service for the [DPYC Social Contract](htt
 | `network_versions()` | — | Current recommended component versions |
 | `network_advisory()` | — | Deployment advisory for operators |
 | `service_status()` | — | Runtime version diagnostics |
+| `resolve_service(name, npub)` | `name: str = "", npub: str = ""` | Resolve one service by name or npub (exactly one) to its `npub`, `url`, `name`, `role` and `purchase_mode`. Operators use this through the SDK's `default_oracle_client()` instead of reading GitHub |
+| `resolve_authority_for(npub)` | `npub: str` | The certifying Authority (`npub`, `url`, `name`) named by a member's `upstream_authority_npub` |
+| `get_relays()` | — | The DPYC Nostr relay set from `dpyc-community/relays.json`, best first; relays the Oracle proved unreachable move to the back, none are dropped |
+| `report_relay_failure(relay, reporter_npub, signed_event, mode)` | `relay: str, reporter_npub: str, signed_event: str, mode: str = "unknown"` | Report a relay in the DPYC set as unreachable. The event must be signed by `reporter_npub`; the Oracle then probes the relay itself and only its own probe re-ranks it |
 | `request_citizenship(npub, display_name)` | `npub: str, display_name: str` | Begin citizenship onboarding (issues challenge) |
 | `confirm_citizenship(npub, challenge_id, signed_event_json)` | `npub: str, challenge_id: str, signed_event_json: str` | Complete onboarding with signed Nostr event |
 | `register_advocate(npub, display_name, service_name, service_url, service_description)` | `npub: str, display_name: str, service_name: str, service_url: str, service_description: str` | Register a community utility service as an Advocate; the request must be signed with `npub`'s own key |
@@ -56,7 +60,7 @@ New citizens can self-register via Schnorr signature verification:
 2. Sign the challenge with your Nostr nsec (offline, nsec never leaves your device)
 3. `confirm_citizenship(npub, challenge_id, signed_event_json)` — verifies signature and auto-commits
 
-On success, the Oracle creates an individual member file at `members/citizens/{npub}.json` in dpyc-community. The CI workflow auto-regenerates `members.json` from individual files.
+On success, the Oracle creates an individual member file at `members/citizens/{npub}.json` in dpyc-community. The CI workflow regenerates `members/read-only-lookup-cache.json` from the individual files.
 
 ## Advocate Registration
 
@@ -72,7 +76,7 @@ register_advocate(
 )
 ```
 
-The Oracle commits `members/advocates/{npub}.json` directly. Peer MCP servers discover the service URL via `resolve_service_by_name()` in the tollbooth-dpyc registry client.
+The Oracle commits `members/advocates/{npub}.json` directly and updates `members/read-only-lookup-cache.json`, so the Advocate is discoverable at once. Peer MCP servers discover the service URL through this Oracle's `resolve_service(name=...)`, which tollbooth-dpyc calls as `default_oracle_client().resolve_service(name=...)`.
 
 ## How to Connect
 
@@ -90,13 +94,14 @@ This service is hosted on Horizon. Add it to your MCP client configuration:
 
 ## Related Repos
 
-The authoritative, always-current roster lives in the registry — call `lookup_member()` / `network_versions()` for live data. The stable source repos:
+The authoritative, always-current roster lives in the registry — call `list_services()` / `lookup_member()` / `network_versions()` for live data. The stable source repos:
 
 **Core**
 - [dpyc-community](https://github.com/lonniev/dpyc-community) — Registry, governance, and membership data
 - [tollbooth-dpyc](https://github.com/lonniev/tollbooth-dpyc) — Python SDK every Operator and Authority builds on
 - [tollbooth-sample](https://github.com/lonniev/tollbooth-sample) — Reference Operator template for new services
 - [tollbooth-pricing-studio](https://github.com/lonniev/tollbooth-pricing-studio) — iOS app Operators use to design pricing models
+- [tollbooth-web](https://github.com/lonniev/tollbooth-web) — Shared browser SDK for Operator front ends
 
 **Authorities** (certification chain)
 - [tollbooth-authority](https://github.com/lonniev/tollbooth-authority) — Certification + fee ledger
@@ -110,6 +115,10 @@ The authoritative, always-current roster lives in the registry — call `lookup_
 - [taxsort-mcp](https://github.com/lonniev/taxsort-mcp) — Tax sorting + classification
 - [optionality-mcp](https://github.com/lonniev/optionality-mcp) — Options analytics
 - [cypher-mcp](https://github.com/lonniev/cypher-mcp) — Monetized graph answers (named Cypher over Neo4j/AuraDB)
+- [goodearth-mcp](https://github.com/lonniev/goodearth-mcp) — Region-scoped farm climate analytics
+- [beesknees-mcp](https://github.com/lonniev/beesknees-mcp) — The Bee's Knees, a multiplayer race to the queen
+- [roastify-mcp](https://github.com/lonniev/roastify-mcp) — Roastify coffee catalog and packaging artwork
+- [ChartRemotely-mcp](https://github.com/lonniev/ChartRemotely-mcp) — Puts a security on a desktop chart through a paired agent
 
 **Advocates** (shared utilities, unmonetized)
 - [tollbooth-oauth2-collector](https://github.com/lonniev/tollbooth-oauth2-collector) — OAuth2 authorization-code collection
