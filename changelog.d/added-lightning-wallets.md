@@ -1,0 +1,1 @@
+- `lightning_wallets`: the Lightning wallets a newcomer can install, with their store links. The community's pick comes first, and the rest are ranked by a live Brave Search when `BRAVE_SEARCH_API_KEY` is set.

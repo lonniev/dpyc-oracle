@@ -10,3 +10,6 @@ class OracleSettings(BaseSettings):
     cache_ttl_seconds: int = 300
     github_token: str | None = None
     dpyc_community_repo: str = "lonniev/dpyc-community"
+    # Ranks the Lightning wallets offered to new guests. Unset: catalog order.
+    brave_search_api_key: str | None = None
+    wallets_ttl_seconds: int = 86400

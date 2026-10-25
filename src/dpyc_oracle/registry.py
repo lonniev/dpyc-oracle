@@ -137,6 +137,12 @@ class CommunityRegistry:
                 return member
         return None
 
+    async def get_wallets(self) -> dict[str, Any]:
+        data = await self._fetch_json("wallets.json")
+        if not isinstance(data, dict) or not isinstance(data.get("wallets"), list):
+            raise RegistryError("wallets.json missing a 'wallets' list.")
+        return data
+
     # --- Bootstrap-support resolvers (so Operators never read GitHub) ---------
 
     async def get_relays(self) -> list[str]:
