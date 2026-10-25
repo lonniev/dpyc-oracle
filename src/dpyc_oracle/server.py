@@ -16,7 +16,7 @@ from fastmcp import Client, FastMCP
 from nostr_sdk import Event, PublicKey
 from tollbooth.holder_auth import SignedRequestProvider, signed_npub
 
-from dpyc_oracle import __version__, relay_health
+from dpyc_oracle import __version__, relay_health, wallets
 from dpyc_oracle.config import OracleSettings
 from dpyc_oracle.registry import CommunityRegistry
 
@@ -939,6 +939,28 @@ async def list_services(probe: bool = True, kind: str = "all") -> dict:
             "check_price). The Oracle hardcodes none of it."
         ),
     }
+
+
+@mcp.tool()
+async def lightning_wallets() -> dict:
+    """Lightning wallets a newcomer can install to pay a Tollbooth invoice.
+
+    Each comes with its App Store, Google Play and web links, a one-line
+    description, whether it holds the keys for you, and whether it can buy
+    bitcoin in the app. The order is how often a live web search mentions each
+    one this week, with the network's own pick first; without that search it
+    is the community's curated order (``ranked_by`` says which).
+
+    Free.
+    """
+    settings, registry = _ensure_initialized()
+    try:
+        catalog = await registry.get_wallets()
+    except Exception as exc:  # noqa: BLE001
+        return {"success": False, "error": f"Could not read wallets.json: {exc}"}
+    return await wallets.lightning_wallets(
+        catalog, settings.brave_search_api_key, settings.wallets_ttl_seconds,
+    )
 
 
 # --- Operator bootstrap-support tools -------------------------------------
