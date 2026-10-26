@@ -1,0 +1,1 @@
+- Renovate now keeps the Oracle on the current tollbooth-dpyc, like every other consumer, and refreshes its uv.lock weekly.
