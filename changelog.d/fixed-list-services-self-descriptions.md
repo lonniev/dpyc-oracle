@@ -1,0 +1,3 @@
+- `list_services` reports each live service's own name and self-description again. FastMCP 4 keeps the handshake's answer on the client, and the probe was reading a field that is now always empty.
+- `list_services` leaves out members that are not serving (`inactive`, as well as banned), and never probes a plain HTTP endpoint (`transport: http`) as an MCP.
+- The probe's `framework_version` is now `server_version`: it is whatever the server reports, its own release or its framework's.

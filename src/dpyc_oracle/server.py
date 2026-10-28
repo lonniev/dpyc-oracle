@@ -801,9 +801,11 @@ async def _probe_service(url: str) -> dict:
         # A member with holder bearer on refuses a request with no bearer;
         # the probe is an anonymous caller.
         async with Client(url, auth="anonymous") as client:
-            init = client.initialize_result
-            server_info = getattr(init, "serverInfo", None)
-            instructions = getattr(init, "instructions", None) or ""
+            # FastMCP 4 keeps the handshake's answer on the client itself;
+            # `initialize_result` is None there, which left every live
+            # probe with no name and no self-description.
+            server_info = client.server_info
+            instructions = client.instructions or ""
             tools = await client.list_tools()
             pricing_tools = [
                 t.name for t in tools
@@ -812,12 +814,11 @@ async def _probe_service(url: str) -> dict:
             return {
                 "probe_status": "live",
                 "server_name": getattr(server_info, "name", None),
-                # serverInfo.version — for DPYC services this is the FastMCP
-                # framework version, not the service's own release (they
-                # don't override it). Named accordingly so it isn't mistaken
-                # for the operator's package version; use network_versions()
-                # for component release versions.
-                "framework_version": getattr(server_info, "version", None),
+                # What the server reports in serverInfo.version: its own
+                # release when it sets one (Shortlinks says 0.2.0), otherwise
+                # its framework's (FastMCP 4.1.4). network_versions() gives
+                # each component's release.
+                "server_version": getattr(server_info, "version", None),
                 "self_description": instructions[:_INSTRUCTIONS_EXCERPT_CHARS],
                 "tool_count": len(tools),
                 "pricing_tools": pricing_tools,
@@ -895,7 +896,9 @@ async def list_services(probe: bool = True, kind: str = "all") -> dict:
     for m in members:
         if m.get("role") not in role_filter:
             continue
-        if m.get("status") == "banned":
+        # Only members serving now. "inactive" is in good standing and kept
+        # on record, but nothing answers at its endpoint.
+        if m.get("status", "active") != "active":
             continue
         for svc in m.get("services", []) or []:
             url = svc.get("url")
@@ -908,16 +911,26 @@ async def list_services(probe: bool = True, kind: str = "all") -> dict:
                     "role": m.get("role"),
                     "service_name": svc.get("name"),
                     "url": url,
+                    "transport": svc.get("transport", "mcp"),
                     "registry_description": svc.get("description"),
                 }
             )
 
-    if probe and services:
+    # A plain HTTP endpoint (an OAuth browser callback, say) is not an MCP
+    # and can never answer a handshake; probing it would only report it
+    # "unreachable", which is untrue.
+    mcp_services = [s for s in services if s["transport"] == "mcp"]
+    for s in services:
+        if s["transport"] != "mcp":
+            s["live"] = {"probe_status": "not_probed",
+                         "note": "A plain HTTP endpoint, not an MCP server."}
+
+    if probe and mcp_services:
         probes = await asyncio.gather(
-            *(_probe_service(s["url"]) for s in services),
+            *(_probe_service(s["url"]) for s in mcp_services),
             return_exceptions=True,
         )
-        for s, p in zip(services, probes):
+        for s, p in zip(mcp_services, probes):
             if isinstance(p, Exception):
                 s["live"] = {
                     "probe_status": "unreachable",

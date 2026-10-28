@@ -274,6 +274,77 @@ async def test_probe_service_is_defensive():
 
 
 @pytest.mark.asyncio
+async def test_probe_reads_the_handshake_from_the_client():
+    """FastMCP 4 keeps the handshake's answer on the client, and leaves
+    initialize_result None. Reading that left every live probe nameless and
+    with no self-description."""
+
+    class Info:
+        name = "Tollbooth Shortlinks"
+        version = "0.2.0"
+
+    class LiveClient:
+        initialize_result = None
+        server_info = Info()
+        instructions = "Tollbooth Shortlinks — ephemeral, human-friendly short URLs."
+
+        def __init__(self, url, auth=None):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *a):
+            return False
+
+        async def list_tools(self):
+            return [MagicMock(name="t")]
+
+    server_module._probe_cache.clear()
+    with patch.object(server_module, "Client", LiveClient):
+        result = await server_module._probe_service("https://short.example/mcp")
+    assert result["probe_status"] == "live"
+    assert result["server_name"] == "Tollbooth Shortlinks"
+    assert result["server_version"] == "0.2.0"
+    assert result["self_description"].startswith("Tollbooth Shortlinks")
+
+
+@pytest.mark.asyncio
+async def test_list_services_leaves_out_members_not_serving(mock_registry):
+    inactive = {**MEMBERS_WITH_SERVICES[0], "npub": "npub1inactive", "status": "inactive",
+                "display_name": "Frozen", "services": [{"name": "frozen", "url": "https://frozen.example/mcp"}]}
+    mock_registry.get_members.return_value = [*MEMBERS_WITH_SERVICES, inactive]
+    result = await server_module.list_services(probe=False)
+    names = {s["display_name"] for s in result["services"]}
+    assert "Frozen" not in names and "Bad Actor" not in names and "Alice" in names
+
+
+@pytest.mark.asyncio
+async def test_a_plain_http_endpoint_is_never_probed_as_an_mcp(mock_registry):
+    """An OAuth browser callback turns GET into POST; it can never answer a
+    handshake, and calling it unreachable would be untrue."""
+    callback = {"npub": "npub1advocate", "role": "advocate", "status": "active",
+                "display_name": "Collector", "services": [
+                    {"name": "collector", "url": "https://collector.example/mcp"},
+                    {"name": "callback", "url": "https://callback.example", "transport": "http"},
+                ]}
+    mock_registry.get_members.return_value = [callback]
+    probed: list[str] = []
+
+    async def fake_probe(url):
+        probed.append(url)
+        return {"probe_status": "live"}
+
+    with patch.object(server_module, "_probe_service", side_effect=fake_probe):
+        result = await server_module.list_services(probe=True)
+    assert probed == ["https://collector.example/mcp"]
+    by_name = {s["service_name"]: s for s in result["services"]}
+    assert by_name["callback"]["live"]["probe_status"] == "not_probed"
+    assert by_name["callback"]["transport"] == "http"
+    assert by_name["collector"]["live"]["probe_status"] == "live"
+
+
+@pytest.mark.asyncio
 async def test_get_rulebook(mock_registry):
     result = await server_module.get_rulebook()
     assert "# Governance" in result
