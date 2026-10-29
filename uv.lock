@@ -527,7 +527,7 @@ requires-dist = [
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.0.0" },
     { name = "pytest-asyncio", marker = "extra == 'dev'", specifier = ">=0.23.0" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.16.0" },
-    { name = "tollbooth-dpyc", extras = ["nostr"], specifier = "==0.106.0" },
+    { name = "tollbooth-dpyc", extras = ["nostr"], specifier = "==0.107.0" },
 ]
 provides-extras = ["dev"]
 
@@ -1493,16 +1493,16 @@ sdist = { url = "https://files.pythonhosted.org/packages/bb/89/6df40b0c5fd9a1c30
 
 [[package]]
 name = "tollbooth-dpyc"
-version = "0.106.0"
+version = "0.107.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "cryptography" },
     { name = "httpx" },
     { name = "pynostr" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/fd/03/c42b505f747e4739b93c50a42c440d26ae8faf47d30b7795fe23355d864a/tollbooth_dpyc-0.106.0.tar.gz", hash = "sha256:7b8f51be3ac6bc5fa8d74ddd5be9264588f6524943ba27d7cce0f0f979d5bc24", size = 2902783, upload-time = "2026-10-25T21:48:27.023Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/b0/81/82fcc7353cedca6f47479f1c7eb9b3c4ebe68210efdab0331934e57b3739/tollbooth_dpyc-0.107.0.tar.gz", hash = "sha256:cba65aa6943288d417b4f29212c4fd417050d4a3fc21b0ddf17b66d149492d1f", size = 2912024, upload-time = "2026-10-29T14:18:26.564Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/d8/85/0c3e2e75e853e137eba554fe726f56fbd0a49ea9f986e2c4f250ebf0f2f2/tollbooth_dpyc-0.106.0-py3-none-any.whl", hash = "sha256:5e8c451d0c8edfafc5a57fae6ba36278f8642e4d50a6e307f6b43a671f26639b", size = 480744, upload-time = "2026-10-25T21:48:24.816Z" },
+    { url = "https://files.pythonhosted.org/packages/96/42/ed576423fa658e9369c2a59e37867e46487f1a9d1b06cb985dfc5411c2ef/tollbooth_dpyc-0.107.0-py3-none-any.whl", hash = "sha256:4a53fbc71d07c6155266a9b9f093efc7ea300dc03cbece56155e21ac27965475", size = 484970, upload-time = "2026-10-29T14:18:24.645Z" },
 ]
 
 [package.optional-dependencies]

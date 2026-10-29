@@ -18,7 +18,7 @@ dependencies = [
     "pydantic>=2.0.0",
     "pydantic-settings>=2.0.0",
     "nostr-sdk>=0.45.0,<0.46",
-    "tollbooth-dpyc[nostr]==0.106.0",
+    "tollbooth-dpyc[nostr]==0.107.0",
 ]
 
 [project.optional-dependencies]

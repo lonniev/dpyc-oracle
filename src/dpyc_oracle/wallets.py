@@ -22,11 +22,10 @@ import time
 from datetime import UTC, datetime
 from typing import Any
 
-import httpx
+from tollbooth.web_search import BraveSearch, Hit, WebSearchError
 
 logger = logging.getLogger(__name__)
 
-BRAVE_URL = "https://api.search.brave.com/res/v1/web/search"
 _COUNT = 20
 
 # The fields a page may show; anything else in the catalog stays here.
@@ -42,19 +41,13 @@ def _names(wallet: dict[str, Any]) -> list[re.Pattern[str]]:
             for w in words if isinstance(w, str) and w.strip()]
 
 
-def _text(result: dict[str, Any]) -> str:
-    parts = [result.get("title"), result.get("description"),
-             *(result.get("extra_snippets") or [])]
-    return " ".join(p for p in parts if isinstance(p, str))
-
-
-def rank(wallets: list[dict[str, Any]], results: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def rank(wallets: list[dict[str, Any]], results: list[Hit]) -> list[dict[str, Any]]:
     """The catalog's wallets, each with ``mentions``, in the order to show them.
 
     A result counts once for a wallet however often it names it, so one long
     review cannot outvote twenty short ones.
     """
-    texts = [_text(r) for r in results]
+    texts = [r.text for r in results]
     scored = []
     for order, w in enumerate(wallets):
         names = _names(w)
@@ -71,31 +64,17 @@ def _shown(wallet: dict[str, Any]) -> dict[str, Any]:
     return out
 
 
-async def _search(query: str, key: str) -> list[dict[str, Any]] | None:
+async def _search(query: str, key: str) -> list[Hit] | None:
     """Brave's web results for ``query``, or None when it does not answer.
 
-    The key goes only in the request header; a failure is logged by its status
-    alone, so neither the key nor a response echoing it reaches a log.
+    The SDK's search names a failure by its status alone, so neither the key
+    nor a response echoing it reaches a log.
     """
     try:
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            resp = await client.get(
-                BRAVE_URL,
-                params={"q": query, "count": _COUNT, "extra_snippets": "true"},
-                headers={"Accept": "application/json", "X-Subscription-Token": key},
-            )
-    except httpx.HTTPError as exc:
-        logger.warning("Brave Search unreachable (%s); using the catalog order.", type(exc).__name__)
+        return await BraveSearch(key).search(query, count=_COUNT)
+    except WebSearchError as exc:
+        logger.warning("Brave Search: %s; using the catalog order.", exc)
         return None
-    if resp.status_code != 200:
-        logger.warning("Brave Search answered %s; using the catalog order.", resp.status_code)
-        return None
-    try:
-        results = resp.json().get("web", {}).get("results", [])
-    except ValueError:
-        logger.warning("Brave Search answered unreadable JSON; using the catalog order.")
-        return None
-    return [r for r in results if isinstance(r, dict)]
 
 
 async def lightning_wallets(catalog: dict[str, Any], key: str | None, ttl: float) -> dict[str, Any]:
