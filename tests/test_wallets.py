@@ -4,6 +4,7 @@ from unittest.mock import AsyncMock, patch
 
 import httpx
 import pytest
+from tollbooth.web_search import BRAVE_URL, Hit
 
 from dpyc_oracle import wallets
 
@@ -31,8 +32,12 @@ def _fresh():
     wallets.clear_cache()
 
 
-def _r(text: str) -> dict:
-    return {"title": text, "description": "", "extra_snippets": []}
+def _r(text: str) -> Hit:
+    return Hit(title=text, url="https://example.com/" + text.replace(" ", "-"))
+
+
+def _raw(hit: Hit) -> dict:
+    return {"title": hit.title, "url": hit.url, "description": "", "extra_snippets": []}
 
 
 def test_pinned_first_then_by_results_mentioning():
@@ -53,7 +58,7 @@ def test_names_match_whole_words_only():
 
 
 def test_aliases_and_snippets_count():
-    ranked = wallets.rank(CATALOG["wallets"], [{"title": "x", "extra_snippets": ["try wos today"]}])
+    ranked = wallets.rank(CATALOG["wallets"], [Hit(title="x", url="https://x", snippets=("try wos today",))])
     assert ranked[0]["mentions"] == 1
 
 
@@ -71,7 +76,7 @@ async def test_without_a_key_the_catalog_order_answers():
 
 @pytest.mark.parametrize("status", [429, 500])
 async def test_brave_refusing_falls_back_and_never_leaks_the_key(status, caplog):
-    resp = httpx.Response(status, request=httpx.Request("GET", wallets.BRAVE_URL), text="secret-key echoed")
+    resp = httpx.Response(status, request=httpx.Request("GET", BRAVE_URL), text="secret-key echoed")
     with patch("httpx.AsyncClient.get", AsyncMock(return_value=resp)):
         out = await wallets.lightning_wallets(CATALOG, "secret-key", 86400)
     assert out["ranked_by"] == "catalog"
@@ -80,8 +85,8 @@ async def test_brave_refusing_falls_back_and_never_leaks_the_key(status, caplog)
 
 
 async def test_brave_ranks_and_the_answer_is_cached():
-    body = {"web": {"results": [_r("Strike"), _r("Strike and Blink")]}}
-    resp = httpx.Response(200, request=httpx.Request("GET", wallets.BRAVE_URL), json=body)
+    body = {"web": {"results": [_raw(_r("Strike")), _raw(_r("Strike and Blink"))]}}
+    resp = httpx.Response(200, request=httpx.Request("GET", BRAVE_URL), json=body)
     get = AsyncMock(return_value=resp)
     with patch("httpx.AsyncClient.get", get):
         first = await wallets.lightning_wallets(CATALOG, "k", 86400)

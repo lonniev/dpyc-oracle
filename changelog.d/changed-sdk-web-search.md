@@ -1,0 +1,1 @@
+- The wallet ranking searches Brave through the SDK's `tollbooth.web_search`, the same search Good Earth uses; the ranking itself is unchanged.
