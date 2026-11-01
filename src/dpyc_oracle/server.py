@@ -1171,8 +1171,9 @@ async def resolve_authority_for(npub: str) -> dict:
         return {
             "success": False,
             "error": (
-                f"No upstream Authority resolved for {npub[:16]}… — the npub is "
-                "unknown, is a trust root, or its Authority lists no service."
+                f"No legitimate Authority resolved for {npub[:16]}… — the npub is "
+                "unknown or banned, is a trust root, or its Authority is banned, "
+                "inactive or not chained to the Prime Authority."
             ),
         }
     return {"success": True, "authority": authority}

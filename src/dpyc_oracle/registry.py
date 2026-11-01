@@ -177,23 +177,42 @@ class CommunityRegistry:
             raise RegistryError("relays.json contained no valid wss:// relays.")
         return ordered
 
+    @staticmethod
+    def _is_legitimate_authority(npub: str, by_npub: dict[Any, dict[str, Any]]) -> bool:
+        """True when every link from ``npub`` up to the Prime Authority is an
+        active Authority. A banned or inactive link, or a chain that never
+        reaches Prime, disqualifies everyone beneath it."""
+        seen: set[str] = set()
+        current: str | None = npub
+        while current and current not in seen:
+            seen.add(current)
+            link = by_npub.get(current)
+            if link is None or link.get("status") != "active":
+                return False
+            if link.get("role") == "prime_authority":
+                return True
+            if link.get("role") != "authority":
+                return False
+            current = link.get("upstream_authority_npub")
+        return False
+
     async def resolve_authority_for(self, operator_npub: str) -> dict[str, str] | None:
         """Return the certifying Authority ``{npub, url, name}`` for an operator.
 
         Reads the operator's ``upstream_authority_npub`` and returns that
         Authority's first registered service. ``None`` if the operator is
-        unknown, has no upstream (a trust root), or the Authority lists no
-        service.
+        unknown or banned, has no upstream (a trust root), or that Authority is
+        not legitimate (see :meth:`_is_legitimate_authority`).
         """
-        member = await self.lookup_member(operator_npub)
-        if member is None:
+        members = await self.get_members()
+        by_npub = {m.get("npub"): m for m in members}
+        member = by_npub.get(operator_npub)
+        if member is None or member.get("status") == "banned":
             return None
         upstream = member.get("upstream_authority_npub")
-        if not upstream:
+        if not upstream or not self._is_legitimate_authority(upstream, by_npub):
             return None
-        authority = await self.lookup_member(upstream)
-        if authority is None:
-            return None
+        authority = by_npub[upstream]
         services = authority.get("services") or []
         if not services:
             return {"npub": upstream, "url": "", "name": authority.get("display_name", "")}

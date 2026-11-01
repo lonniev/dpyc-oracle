@@ -267,3 +267,61 @@ async def test_stale_served_on_refresh_failure(registry):
         second = await registry.get_members()  # refresh fails → serve stale
     assert first == second
     assert second[0]["npub"] == "npub1alice"
+
+
+def _chain(**overrides):
+    """Operator -> regional -> authority -> prime, with one member's fields changed."""
+    members = {
+        "op": {"role": "operator", "status": "active", "upstream_authority_npub": "regional"},
+        "regional": {"role": "authority", "status": "active", "upstream_authority_npub": "auth"},
+        "auth": {"role": "authority", "status": "active", "upstream_authority_npub": "prime"},
+        "prime": {"role": "prime_authority", "status": "active", "upstream_authority_npub": None},
+    }
+    for npub, fields in overrides.items():
+        members.setdefault(npub, {}).update(fields)
+    return {
+        "members": [
+            {"npub": npub, "services": [{"name": npub, "url": f"https://{npub}/mcp"}], **m}
+            for npub, m in members.items()
+        ]
+    }
+
+
+async def _resolve(registry, data, npub="op"):
+    with patch.object(registry._client, "get", return_value=_mock_response(json_data=data)):
+        return await registry.resolve_authority_for(npub)
+
+
+@pytest.mark.asyncio
+async def test_an_authority_chained_to_prime_is_named(registry):
+    assert (await _resolve(registry, _chain()))["npub"] == "regional"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "overrides",
+    [
+        {"regional": {"status": "banned"}},
+        {"auth": {"status": "banned"}},
+        {"regional": {"status": "inactive"}},
+        {"op": {"status": "banned"}},
+        {"regional": {"role": "operator"}},
+        {"regional": {"upstream_authority_npub": "stranger"}},
+        {"regional": {"upstream_authority_npub": None}},
+        {"auth": {"upstream_authority_npub": "regional"}},
+        {"op": {"upstream_authority_npub": "stranger"}},
+    ],
+    ids=[
+        "banned-authority", "banned-grandparent", "inactive-authority", "banned-operator",
+        "parent-not-an-authority", "chain-leaves-the-registry", "rogue-self-rooted",
+        "chain-loops", "unlisted-authority",
+    ],
+)
+async def test_no_authority_is_named_unless_the_chain_is_legitimate(registry, overrides):
+    assert await _resolve(registry, _chain(**overrides)) is None
+
+
+@pytest.mark.asyncio
+async def test_prime_may_be_the_named_authority(registry):
+    data = _chain(op={"upstream_authority_npub": "prime"})
+    assert (await _resolve(registry, data))["npub"] == "prime"
