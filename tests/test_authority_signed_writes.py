@@ -57,3 +57,35 @@ async def test_a_write_the_authority_signed_passes_the_signature_gate(tool, args
     result = await _call(tool, args, AUTHORITY_NPUB)
     # The registry stub knows no members, so the tool stops at its next check.
     assert "must be signed with its key" not in result.get("error", "")
+
+
+REGISTER_AUTHORITY = {
+    "authority_npub": OPERATOR_NPUB, "display_name": "new",
+    "service_url": "https://new.example/mcp", "upstream_authority_npub": AUTHORITY_NPUB,
+}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("signer", [None, STRANGER_NPUB, OPERATOR_NPUB])
+async def test_a_new_authority_its_sponsor_did_not_sign_for_is_refused(signer):
+    with patch.object(server_module, "_commit_authority", new_callable=AsyncMock) as commit:
+        result = await _call(server_module.register_authority, REGISTER_AUTHORITY, signer)
+    assert result["success"] is False
+    assert "signed" in result["error"]
+    commit.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_a_new_authority_its_sponsor_signed_for_is_committed():
+    registry = _registry()
+    registry.lookup_member = AsyncMock(
+        side_effect=lambda npub: {"role": "authority"} if npub == AUTHORITY_NPUB else None
+    )
+    with (
+        patch.object(server_module, "signed_npub", return_value=AUTHORITY_NPUB),
+        patch.object(server_module, "_ensure_initialized", return_value=(None, registry)),
+        patch.object(server_module, "_commit_authority", AsyncMock(return_value="https://c")),
+    ):
+        fn = getattr(server_module.register_authority, "fn", server_module.register_authority)
+        result = await fn(**REGISTER_AUTHORITY)
+    assert result["success"] is True

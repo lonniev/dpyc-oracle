@@ -1416,9 +1416,8 @@ async def register_authority(
 ) -> dict:
     """Register a new Authority in the DPYC community registry.
 
-    Called by an Authority service at the end of the onboarding protocol
-    (after the candidate proves npub ownership and the Prime Authority
-    approves). Commits a new ``members/authorities/{npub}.json`` file to
+    The request must be signed with ``upstream_authority_npub``'s key: the
+    sponsor vouches for the new Authority. Commits a new ``members/authorities/{npub}.json`` file to
     dpyc-community on GitHub.
 
     The full Authority onboarding protocol is a 3-step Nostr DM
@@ -1444,6 +1443,10 @@ async def register_authority(
         _validate_npub(upstream_authority_npub)
     except (ValueError, Exception) as exc:
         return {"success": False, "error": f"Invalid upstream_authority_npub: {exc}"}
+
+    # The sponsor vouches for a new Authority by signing the request.
+    if refusal := _not_signed_by(upstream_authority_npub, "sponsoring Authority"):
+        return refusal
 
     settings, registry = _ensure_initialized()
 
