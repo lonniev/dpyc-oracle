@@ -1,0 +1,1 @@
+- `resolve_authority_for` now names only a legitimate Authority: every link up to the Prime Authority must be an active Authority. A banned or inactive link, a chain that never reaches Prime, or a banned operator gets no answer, so no Neon URL and no certification path.
