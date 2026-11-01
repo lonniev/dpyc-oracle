@@ -672,6 +672,16 @@ async def test_confirm_citizenship_pr_failure_returns_error(mock_registry):
 # ---------------------------------------------------------------------------
 
 
+@pytest.fixture(autouse=True)
+def _register_authority_signed_by_its_sponsor(request):
+    """The signature rule has its own tests in test_authority_signed_writes."""
+    if "test_register_authority" not in request.node.name:
+        yield
+        return
+    with patch.object(server_module, "_signed_by", return_value=True):
+        yield
+
+
 @pytest.mark.asyncio
 async def test_register_authority_success(mock_registry):
     """New authority with valid upstream is committed to the registry."""
