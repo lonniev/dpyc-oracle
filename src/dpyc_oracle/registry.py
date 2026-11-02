@@ -196,6 +196,18 @@ class CommunityRegistry:
             current = link.get("upstream_authority_npub")
         return False
 
+    async def is_legitimate_authority_under(self, npub: str, upstream_npub: str) -> bool:
+        """True when ``npub`` is a legitimate Authority whose own parent is ``upstream_npub``."""
+        members = await self.get_members()
+        by_npub = {m.get("npub"): m for m in members}
+        member = by_npub.get(npub)
+        return (
+            member is not None
+            and member.get("role") == "authority"
+            and member.get("upstream_authority_npub") == upstream_npub
+            and self._is_legitimate_authority(npub, by_npub)
+        )
+
     async def resolve_authority_for(self, operator_npub: str) -> dict[str, str] | None:
         """Return the certifying Authority ``{npub, url, name}`` for an operator.
 

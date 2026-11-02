@@ -1416,9 +1416,11 @@ async def register_authority(
 ) -> dict:
     """Register a new Authority in the DPYC community registry.
 
-    The request must be signed with ``upstream_authority_npub``'s key: the
-    sponsor vouches for the new Authority. Commits a new ``members/authorities/{npub}.json`` file to
-    dpyc-community on GitHub.
+    The request must be signed with ``upstream_authority_npub``'s key, or with
+    the key of a legitimate Authority whose own parent is that sponsor: that
+    Authority runs the onboarding flow below, which registers only after the
+    parent has approved. Commits a new ``members/authorities/{npub}.json`` file
+    to dpyc-community on GitHub.
 
     The full Authority onboarding protocol is a 3-step Nostr DM
     challenge-response flow:
@@ -1444,11 +1446,19 @@ async def register_authority(
     except (ValueError, Exception) as exc:
         return {"success": False, "error": f"Invalid upstream_authority_npub: {exc}"}
 
-    # The sponsor vouches for a new Authority by signing the request.
-    if refusal := _not_signed_by(upstream_authority_npub, "sponsoring Authority"):
-        return refusal
-
     settings, registry = _ensure_initialized()
+
+    # The sponsor signs, or a legitimate child of the sponsor signs after onboarding.
+    if refusal := _not_signed_by(upstream_authority_npub, "sponsoring Authority"):
+        signer = signed_npub()
+        try:
+            vouched = signer is not None and await registry.is_legitimate_authority_under(
+                PublicKey.parse(signer).to_bech32(), upstream_authority_npub
+            )
+        except Exception as exc:  # noqa: BLE001
+            return {"success": False, "error": f"Could not read the registry: {exc}"}
+        if not vouched:
+            return refusal
 
     # Verify upstream authority exists and has appropriate role
     upstream = await registry.lookup_member(upstream_authority_npub)
