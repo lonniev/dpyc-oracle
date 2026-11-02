@@ -1,0 +1,1 @@
+- `register_authority` also accepts the signature of a legitimate Authority whose own parent is the named sponsor. The three-step onboarding flow can register again, and it registers only after the parent approves.
