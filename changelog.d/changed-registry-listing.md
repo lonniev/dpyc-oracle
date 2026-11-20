@@ -1,1 +1,0 @@
-- The MCP Registry listing carries a title (DPYC Oracle) and a link to https://cafe.tollbooth-dpyc.com/products/dpyc-oracle.
