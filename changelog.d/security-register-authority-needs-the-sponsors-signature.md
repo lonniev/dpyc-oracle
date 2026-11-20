@@ -1,1 +1,0 @@
-- `register_authority` now requires the request to be signed by the sponsoring Authority. Before, anyone could add themselves to the registry as an Authority.

@@ -5,6 +5,36 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 Changes not yet released live in `changelog.d/`, one file per change — see the README there for why, and `scripts/changelog.py` for what folds them in at release time.
 
+## [0.4.1] — 2026-11-19
+
+### Added
+
+- `lightning_wallets`: the Lightning wallets a newcomer can install, with their store links. The community's pick comes first, and the rest are ranked by a live Brave Search when `BRAVE_SEARCH_API_KEY` is set.
+
+### Changed
+
+- Runs on tollbooth-dpyc 0.106.0.
+
+- The MCP Registry listing carries a title (DPYC Oracle) and a link to https://cafe.tollbooth-dpyc.com/products/dpyc-oracle.
+
+- Renovate now keeps the Oracle on the current tollbooth-dpyc, like every other consumer, and refreshes its uv.lock weekly.
+
+- The wallet ranking searches Brave through the SDK's `tollbooth.web_search`, the same search Good Earth uses; the ranking itself is unchanged.
+
+### Fixed
+
+- `list_services` reports each live service's own name and self-description again. FastMCP 4 keeps the handshake's answer on the client, and the probe was reading a field that is now always empty.
+- `list_services` leaves out members that are not serving (`inactive`, as well as banned), and never probes a plain HTTP endpoint (`transport: http`) as an MCP.
+- The probe's `framework_version` is now `server_version`: it is whatever the server reports, its own release or its framework's.
+
+### Security
+
+- `register_authority` also accepts the signature of a legitimate Authority whose own parent is the named sponsor. The three-step onboarding flow can register again, and it registers only after the parent approves.
+
+- `register_authority` now requires the request to be signed by the sponsoring Authority. Before, anyone could add themselves to the registry as an Authority.
+
+- `resolve_authority_for` now names only a legitimate Authority: every link up to the Prime Authority must be an active Authority. A banned or inactive link, a chain that never reaches Prime, or a banned operator gets no answer, so no Neon URL and no certification path.
+
 ## [0.4.0] — 2026-10-21
 
 ### Changed
