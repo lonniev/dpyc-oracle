@@ -375,6 +375,43 @@ async def test_about(mock_registry):
     assert "# About the DPYC Social Contract" in result
     assert "# Governance" in result
     assert "DPYC Community" in result
+    assert "# Member Services" in result
+
+
+def test_member_links_come_from_the_registry_not_a_hand_list():
+    members = [
+        {"role": "operator", "status": "active", "display_name": "Zeta",
+         "services": [{"name": "zeta", "url": "https://zeta/mcp"}]},
+        {"role": "operator", "status": "inactive", "display_name": "Asleep",
+         "services": [{"name": "asleep", "url": "https://asleep/mcp"}]},
+        {"role": "citizen", "status": "active", "display_name": "Cit",
+         "services": [{"name": "c", "url": "https://c/mcp"}]},
+        {"role": "authority", "status": "active", "display_name": "Auth",
+         "services": [{"name": "auth", "url": "https://auth/mcp"}, {"name": "nourl"}]},
+        {"role": "operator", "status": "active", "display_name": "alpha",
+         "services": [{"name": "alpha", "url": "https://alpha/mcp"}]},
+    ]
+    got = [(m["display_name"], m["url"]) for m in server_module.member_links(members)]
+    assert got == [("Auth", "https://auth/mcp"), ("alpha", "https://alpha/mcp"),
+                   ("Zeta", "https://zeta/mcp")]
+
+
+@pytest.mark.asyncio
+async def test_about_names_every_active_member_service(mock_registry):
+    mock_registry.get_members.return_value = [
+        {"role": "operator", "status": "active", "display_name": "Brand New MCP",
+         "services": [{"name": "new", "url": "https://brand-new.example/mcp"}]},
+    ]
+    result = await server_module.about()
+    assert "**Brand New MCP** (operator): https://brand-new.example/mcp" in result
+
+
+@pytest.mark.asyncio
+async def test_about_survives_an_unreadable_registry(mock_registry):
+    mock_registry.get_members.side_effect = RuntimeError("github down")
+    result = await server_module.about()
+    assert "call list_services()" in result
+    assert "https://github.com/lonniev/dpyc-community" in result
 
 
 @pytest.mark.asyncio
