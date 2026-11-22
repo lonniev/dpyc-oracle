@@ -22,34 +22,36 @@ from dpyc_oracle.registry import CommunityRegistry
 
 logger = logging.getLogger(__name__)
 
-# Canonical ecosystem repos. The authoritative, always-current member roster
-# lives in the dpyc-community registry — call lookup_member()/network_versions()
-# for live data. This list is the stable set of source repos people link to.
-ECOSYSTEM_LINKS = {
-    # Core
+# Links that are not registry members: the community, the shared packages and
+# the tools operators use. Every member service is read from the dpyc-community
+# registry when asked (``member_links``), so a new member needs no edit here.
+PROJECT_LINKS = {
     "dpyc_community": "https://github.com/lonniev/dpyc-community",
     "tollbooth_dpyc": "https://github.com/lonniev/tollbooth-dpyc",
     "dpyc_oracle": "https://github.com/lonniev/dpyc-oracle",
     "tollbooth_sample": "https://github.com/lonniev/tollbooth-sample",
-    # Authorities (certification chain)
-    "tollbooth_authority": "https://github.com/lonniev/tollbooth-authority",
-    "tollbooth_authority_northamerica": "https://github.com/lonniev/tollbooth-authority-northamerica",
-    "tollbooth_authority_newengland": "https://github.com/lonniev/tollbooth-authority-newengland",
-    # Operators
-    "thebrain_mcp": "https://github.com/lonniev/thebrain-mcp",
-    "excalibur_mcp": "https://github.com/lonniev/excalibur-mcp",
-    "schwab_mcp": "https://github.com/lonniev/schwab-mcp",
-    "taxsort_mcp": "https://github.com/lonniev/taxsort-mcp",
-    "optionality_mcp": "https://github.com/lonniev/optionality-mcp",
-    "cypher_mcp": "https://github.com/lonniev/cypher-mcp",
-    # Advocates (shared utilities, unmonetized)
-    "tollbooth_oauth2_collector": "https://github.com/lonniev/tollbooth-oauth2-collector",
-    "tollbooth_shortlinks": "https://github.com/lonniev/tollbooth-shortlinks",
-    # Pricing app (operator pricing-model editor)
     "tollbooth_pricing_studio": "https://github.com/lonniev/tollbooth-pricing-studio",
-    # Oracle MCP endpoint
-    "dpyc_oracle_mcp": "https://dpyc-oracle.fastmcp.app/mcp",
 }
+
+_SERVICE_ROLES = ("prime_authority", "authority", "operator", "advocate")
+
+
+def member_links(members: list[dict]) -> list[dict]:
+    """Each active member service's endpoint, in role order, from the registry."""
+    links = [
+        {
+            "display_name": m.get("display_name"),
+            "role": m.get("role"),
+            "service_name": svc.get("name"),
+            "url": svc["url"],
+        }
+        for m in members
+        if m.get("role") in _SERVICE_ROLES and m.get("status", "active") == "active"
+        for svc in m.get("services") or []
+        if svc.get("url")
+    ]
+    return sorted(links, key=lambda x: (_SERVICE_ROLES.index(x["role"]),
+                                         (x["display_name"] or "").lower()))
 
 INSTRUCTIONS = """\
 DPYC Oracle — community concierge for the DPYC Social Contract.
@@ -478,9 +480,15 @@ async def about() -> str:
     _, registry = _ensure_initialized()
     readme = await registry.get_text("README.md")
     governance = await registry.get_text("GOVERNANCE.md")
-    links_section = "\n".join(
-        f"- **{name}**: {url}" for name, url in ECOSYSTEM_LINKS.items()
-    )
+    project = "\n".join(f"- **{name}**: {url}" for name, url in PROJECT_LINKS.items())
+    try:
+        members = member_links(await registry.get_members())
+        services = "\n".join(
+            f"- **{m['display_name']}** ({m['role']}): {m['url']}" for m in members
+        )
+    except Exception as exc:
+        logger.warning("about: registry roster unavailable: %s", type(exc).__name__)
+        services = "The registry could not be read just now; call list_services()."
     return (
         "# About the DPYC Social Contract\n\n"
         f"{readme}\n\n"
@@ -489,7 +497,9 @@ async def about() -> str:
         f"{governance}\n\n"
         "---\n\n"
         "# Ecosystem Links\n\n"
-        f"{links_section}"
+        f"{project}\n\n"
+        "# Member Services\n\n"
+        f"{services}"
     )
 
 
@@ -762,7 +772,8 @@ async def service_status() -> dict:
     return {
         "service": "dpyc-oracle",
         "versions": versions,
-        "ecosystem_links": ECOSYSTEM_LINKS,
+        "ecosystem_links": PROJECT_LINKS,
+        "member_services": "Call list_services() for every live member service.",
     }
 
 

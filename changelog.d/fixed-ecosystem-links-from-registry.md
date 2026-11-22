@@ -1,0 +1,1 @@
+- `about()` lists every active member service from the dpyc-community registry, so a new operator appears without an Oracle release. The hand-kept roster it replaces was missing seven operators. `service_status` keeps only the non-member project links and points at `list_services()`.
