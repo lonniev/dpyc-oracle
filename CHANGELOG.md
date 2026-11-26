@@ -5,6 +5,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 Changes not yet released live in `changelog.d/`, one file per change — see the README there for why, and `scripts/changelog.py` for what folds them in at release time.
 
+## [0.4.3] — 2026-11-25
+
+### Fixed
+
+- `about()` lists every active member service from the dpyc-community registry, so a new operator appears without an Oracle release. The hand-kept roster it replaces was missing seven operators. `service_status` keeps only the non-member project links and points at `list_services()`.
+
 ## [0.4.2] — 2026-11-22
 
 ### Changed
