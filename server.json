@@ -4,7 +4,7 @@
   "title": "DPYC Oracle",
   "description": "DPYC Social Contract community concierge — free MCP for membership, governance, and onboarding",
   "websiteUrl": "https://cafe.tollbooth-dpyc.com/products/dpyc-oracle",
-  "version": "0.4.3",
+  "version": "0.4.4",
   "repository": {
     "url": "https://github.com/lonniev/dpyc-oracle",
     "source": "github"
