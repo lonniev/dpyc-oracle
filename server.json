@@ -2,7 +2,7 @@
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.lonniev/dpyc-oracle",
   "title": "DPYC Oracle",
-  "description": "DPYC Social Contract community concierge — free MCP for membership, governance, and onboarding",
+  "description": "DPYC Oracle — free concierge for Tollbooth DPYC™ membership, governance and onboarding",
   "websiteUrl": "https://cafe.tollbooth-dpyc.com/products/dpyc-oracle",
   "version": "0.4.4",
   "repository": {
